@@ -1,117 +1,231 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
+import {
+  ASSIGNMENT_STATUSES,
+  ASSIGNMENT_PRIORITIES,
+  minDatetimeLocalNow,
+  isDeadlineValidOnUpdate,
+  formatAssignmentApiError,
+  dbStatusToApiValue,
+  priorityToApiValue,
+} from '../../constants/assignments';
 
 export default function AssignmentEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState('pending');
-  const [priority, setPriority] = useState(2);
+  const [status, setStatus] = useState('PENDING');
+  const [priority, setPriority] = useState('MEDIUM');
   const [deadline, setDeadline] = useState('');
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [initialStatusDb, setInitialStatusDb] = useState('');
+  const [initialDeadlineLocal, setInitialDeadlineLocal] = useState('');
+  const [touched, setTouched] = useState({});
+  const [adminOverrideCompleted, setAdminOverrideCompleted] = useState(false);
+
+  const isAdmin = user?.roleName === 'admin';
+  const isCompleted = initialStatusDb === 'completed';
+  const completedLocked = isCompleted && (!isAdmin || !adminOverrideCompleted);
+
+  const minLocal = useMemo(() => minDatetimeLocalNow(), []);
+
+  const deadlineInputMin = useMemo(() => {
+    if (completedLocked) return undefined;
+    const initialPast =
+      initialDeadlineLocal &&
+      !Number.isNaN(new Date(initialDeadlineLocal).getTime()) &&
+      new Date(initialDeadlineLocal).getTime() <= Date.now();
+    if (initialPast && deadline === initialDeadlineLocal) return undefined;
+    return minLocal;
+  }, [completedLocked, initialDeadlineLocal, deadline, minLocal]);
 
   useEffect(() => {
-    api.get(`/assignments/${id}`)
+    setFetching(true);
+    api
+      .get(`/assignments/${id}`)
       .then(({ data }) => {
         setTitle(data.title);
         setDescription(data.description || '');
-        setStatus(data.status);
-        setPriority(data.priority);
-        setDeadline(data.deadline ? data.deadline.slice(0, 16) : '');
+        setInitialStatusDb(data.status);
+        setStatus(dbStatusToApiValue(data.status));
+        setPriority(priorityToApiValue(data.priority, data.priorityLabel));
+        const dl = data.deadline ? data.deadline.slice(0, 16) : '';
+        setDeadline(dl);
+        setInitialDeadlineLocal(dl);
+        setLoadError('');
       })
-      .catch(() => setError('Failed to load'));
+      .catch(() => setLoadError('Failed to load assignment'))
+      .finally(() => setFetching(false));
   }, [id]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
+  const fieldErrors = useMemo(() => {
+    const e = {};
+    if (!title.trim()) e.title = 'Title is required';
+    if (!description.trim()) e.description = 'Description is required';
+    if (!deadline) e.deadline = 'Deadline is required';
+    else if (!isDeadlineValidOnUpdate(deadline, initialDeadlineLocal)) {
+      e.deadline = 'When changing the deadline, pick a future date and time';
+    }
+    return e;
+  }, [title, description, deadline, initialDeadlineLocal]);
+
+  const showErrors = touched.all || Object.keys(touched).length > 0;
+  const formInvalid = Object.keys(fieldErrors).length > 0 || completedLocked;
+
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    setTouched({ all: true });
+    if (completedLocked) {
+      toast.error('Completed assignments cannot be edited without admin override.');
+      return;
+    }
+    if (Object.keys(fieldErrors).length) {
+      toast.error('Fix the highlighted fields before submitting.');
+      return;
+    }
     setLoading(true);
     try {
-      await api.patch(`/assignments/${id}`, {
-        title,
-        description: description || undefined,
+      const body = {
+        title: title.trim(),
+        description: description.trim(),
         status,
         priority,
-        deadline: deadline || undefined,
-      });
+        deadline: new Date(deadline).toISOString(),
+      };
+      if (isCompleted && isAdmin && adminOverrideCompleted) {
+        body.adminOverrideCompleted = true;
+      }
+      await api.patch(`/assignments/${id}`, body);
+      toast.success('Assignment updated');
       navigate('/assignments');
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.details?.join(', ') || 'Failed');
+      toast.error(formatAssignmentApiError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  if (error && !title) return <div className="text-red-600">{error}</div>;
+  if (fetching) {
+    return <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800 dark:border-growe" />;
+  }
+  if (loadError) {
+    return <div className="text-red-600 dark:text-red-400">{loadError}</div>;
+  }
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold mb-6">Edit Assignment</h1>
-      <form onSubmit={handleSubmit} className="bg-white shadow rounded p-6">
-        {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>}
+      <h1 className="text-2xl font-bold mb-6 text-slate-900 dark:text-slate-100">Edit assignment</h1>
+      {isCompleted && (
+        <div
+          className={`mb-4 rounded-lg p-3 text-sm ${
+            isAdmin
+              ? 'bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100'
+              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+          }`}
+        >
+          {isAdmin ? (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={adminOverrideCompleted}
+                onChange={(e) => setAdminOverrideCompleted(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                This assignment is completed. Check this box to allow edits or status changes (admin override).
+              </span>
+            </label>
+          ) : (
+            <span>This assignment is completed and cannot be changed. Contact an administrator if you need it reopened.</span>
+          )}
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-slate-200 dark:border-slate-600">
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Title</label>
+          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Title</label>
           <input
             type="text"
             value={title}
+            disabled={completedLocked}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full border rounded py-2 px-3"
-            required
+            onBlur={() => setTouched((t) => ({ ...t, title: true }))}
+            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-60"
           />
+          {showErrors && fieldErrors.title && <p className="text-sm text-red-600 mt-1">{fieldErrors.title}</p>}
         </div>
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">Description</label>
+          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Description</label>
           <textarea
             value={description}
+            disabled={completedLocked}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border rounded py-2 px-3"
-            rows={3}
+            onBlur={() => setTouched((t) => ({ ...t, description: true }))}
+            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-60"
+            rows={4}
           />
+          {showErrors && fieldErrors.description && (
+            <p className="text-sm text-red-600 mt-1">{fieldErrors.description}</p>
+          )}
         </div>
         <div className="mb-4 grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Status</label>
+            <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Status</label>
             <select
               value={status}
+              disabled={completedLocked}
               onChange={(e) => setStatus(e.target.value)}
-              className="w-full border rounded py-2 px-3"
+              className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-60"
             >
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="overdue">Overdue</option>
+              {ASSIGNMENT_STATUSES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2">Priority (1-5)</label>
-            <input
-              type="number"
-              min={1}
-              max={5}
+            <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Priority</label>
+            <select
               value={priority}
-              onChange={(e) => setPriority(parseInt(e.target.value, 10))}
-              className="w-full border rounded py-2 px-3"
-            />
+              disabled={completedLocked}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-60"
+            >
+              {ASSIGNMENT_PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Deadline</label>
+          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Deadline</label>
           <input
             type="datetime-local"
             value={deadline}
+            min={deadlineInputMin}
+            disabled={completedLocked}
             onChange={(e) => setDeadline(e.target.value)}
-            className="w-full border rounded py-2 px-3"
+            onBlur={() => setTouched((t) => ({ ...t, deadline: true }))}
+            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-60"
           />
+          {showErrors && fieldErrors.deadline && <p className="text-sm text-red-600 mt-1">{fieldErrors.deadline}</p>}
         </div>
         <button
           type="submit"
-          disabled={loading}
-          className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+          disabled={loading || formInvalid}
+          className="bg-slate-800 dark:bg-growe dark:text-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 dark:hover:bg-growe-light disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Saving...' : 'Save'}
+          {loading ? 'Saving…' : 'Save'}
         </button>
       </form>
     </div>

@@ -1,17 +1,9 @@
-import * as assignmentModel from '../models/assignment.model.js';
+import * as assignmentService from '../services/assignment.service.js';
 
 export const create = async (req, res, next) => {
   try {
-    const { title, description, status = 'pending', priority = 2, deadline } = req.body;
-    const assignment = await assignmentModel.create({
-      userId: req.user.id,
-      title: title.trim(),
-      description: description?.trim() || null,
-      status,
-      priority: priority || 2,
-      deadline: deadline ? new Date(deadline) : null,
-    });
-    res.status(201).json(assignment);
+    const row = await assignmentService.createAssignment(req.user.id, req.body);
+    res.status(201).json(row);
   } catch (err) {
     next(err);
   }
@@ -19,15 +11,8 @@ export const create = async (req, res, next) => {
 
 export const list = async (req, res, next) => {
   try {
-    const { status, sortBy, sortOrder, limit, offset } = req.query;
-    const assignments = await assignmentModel.listByUser(req.user.id, {
-      status,
-      sortBy: sortBy || 'deadline',
-      sortOrder: sortOrder || 'asc',
-      limit: parseInt(limit, 10) || 50,
-      offset: parseInt(offset, 10) || 0,
-    });
-    res.json(assignments);
+    const result = await assignmentService.listAssignments(req.user.id, req.validatedQuery);
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -35,7 +20,7 @@ export const list = async (req, res, next) => {
 
 export const getById = async (req, res, next) => {
   try {
-    res.json(req.assignment);
+    res.json(assignmentService.getEnrichedById(req.assignment));
   } catch (err) {
     next(err);
   }
@@ -43,15 +28,10 @@ export const getById = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const { title, description, status, priority, deadline } = req.body;
-    const assignment = await assignmentModel.update(req.params.id, {
-      title: title?.trim(),
-      description: description !== undefined ? description?.trim() : undefined,
-      status,
-      priority,
-      deadline: deadline !== undefined ? (deadline ? new Date(deadline) : null) : undefined,
+    const row = await assignmentService.updateAssignment(req.user.id, req.params.id, req.body, {
+      roleName: req.user.roleName,
     });
-    res.json(assignment);
+    res.json(row);
   } catch (err) {
     next(err);
   }
@@ -59,7 +39,9 @@ export const update = async (req, res, next) => {
 
 export const remove = async (req, res, next) => {
   try {
-    await assignmentModel.deleteById(req.params.id);
+    await assignmentService.softDeleteAssignment(req.user.id, req.params.id, {
+      roleName: req.user.roleName,
+    });
     res.status(204).send();
   } catch (err) {
     next(err);
