@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: growe-backend/package.json
+      - name: Install backend deps
+        run: cd growe-backend && npm install
+      - name: Run backend tests
+        run: cd growe-backend && npm test
+        env:
+          NODE_ENV: test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: growe-frontend/package.json
+      - name: Install frontend deps
+        run: cd growe-frontend && npm install
+      - name: Run frontend tests
+        run: cd growe-frontend && npm test
+      - name: Build frontend
+        run: cd growe-frontend && npm run build
+        env:
+          NODE_ENV: production
