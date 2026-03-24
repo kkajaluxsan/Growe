@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-# Growe
-ITPM
-=======
+
 # GROWE - Academic Collaboration Platform
 
 Production-grade academic collaboration system for university students: peer learning, tutoring, assignment management, and real-time group meetings.
