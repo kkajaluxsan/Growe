@@ -12,6 +12,7 @@ import AssignmentList from './pages/assignments/AssignmentList';
 import CreateAssignment from './pages/assignments/CreateAssignment';
 import AssignmentEdit from './pages/assignments/AssignmentEdit';
 import TutorsPage from './pages/tutors/TutorsPage';
+import TutorSelectionPage from './pages/tutors/TutorSelectionPage';
 import MeetingList from './pages/meetings/MeetingList';
 import MeetingRoom from './pages/meetings/MeetingRoom';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -42,6 +43,7 @@ function App() {
         <Route path="assignments/new" element={<ProtectedRoute requireVerified><CreateAssignment /></ProtectedRoute>} />
         <Route path="assignments/:id" element={<ProtectedRoute requireVerified><AssignmentEdit /></ProtectedRoute>} />
         <Route path="tutors" element={<ProtectedRoute requireVerified><TutorsPage /></ProtectedRoute>} />
+        <Route path="tutors/select" element={<ProtectedRoute requireVerified><TutorSelectionPage /></ProtectedRoute>} />
         <Route path="meetings" element={<ProtectedRoute requireVerified><MeetingList /></ProtectedRoute>} />
         <Route path="meetings/:id" element={<ProtectedRoute requireVerified><MeetingRoom /></ProtectedRoute>} />
         <Route path="admin" element={<ProtectedRoute requireVerified roles={['admin']}><AdminDashboard /></ProtectedRoute>} />
