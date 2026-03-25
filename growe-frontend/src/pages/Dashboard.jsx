@@ -60,7 +60,7 @@ export default function Dashboard() {
         if (cancelled) return;
         const groups = Array.isArray(gRes.data) ? gRes.data.length : 0;
         const bookings = Array.isArray(bRes.data)
-          ? bRes.data.filter((b) => b.status && ['pending', 'confirmed'].includes(b.status)).length
+          ? bRes.data.filter((b) => b.status && ['pending', 'waiting_tutor_confirmation', 'confirmed'].includes(b.status)).length
           : 0;
         const now = Date.now();
         const meetings = Array.isArray(mRes.data)
