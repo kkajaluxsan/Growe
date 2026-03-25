@@ -1,0 +1,16 @@
+{
+  "name": "growe-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "(npx kill-port 8000 5001 5173 5174 5175 >NUL 2>&1 || echo Ports already free) && concurrently -k -n \"api,ws,web\" -c \"cyan,magenta,green\" \"php growe-backend-laravel-app/artisan serve --host=127.0.0.1 --port=8000\" \"npm --prefix growe-backend run dev\" \"npm --prefix growe-frontend run dev -- --host 127.0.0.1 --port 5173\"",
+    "dev:api": "php growe-backend-laravel-app/artisan serve --host=127.0.0.1 --port=8000",
+    "dev:ws": "npm --prefix growe-backend run dev",
+    "dev:web": "npm --prefix growe-frontend run dev -- --host 127.0.0.1 --port 5173"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "kill-port": "^2.0.1"
+  }
+}
+
