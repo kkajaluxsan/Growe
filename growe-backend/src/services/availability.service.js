@@ -2,12 +2,18 @@ import * as tutorModel from '../models/tutor.model.js';
 import * as bookingModel from '../models/booking.model.js';
 import { generateSlots } from '../utils/slotGenerator.js';
 import { isPast } from '../utils/timeUtils.js';
+import * as groupModel from '../models/group.model.js';
 
 function toDateString(val) {
   if (!val) return null;
   if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10);
   const d = new Date(val);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (isNaN(d.getTime())) return null;
+  // Use local date parts to avoid timezone shifting (DATE columns should be timezone-free).
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export const getAvailableSlots = async ({ tutorId, fromDate, toDate } = {}) => {
@@ -57,4 +63,68 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate } = {}) => {
   }
 
   return result.sort((a, b) => new Date(a.start) - new Date(b.start));
+};
+
+export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
+  if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const err = new Error('date (YYYY-MM-DD) is required');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!groupId) {
+    const err = new Error('groupId is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const member = await groupModel.getMember(groupId, userId);
+  if (!member || member.status !== 'approved') {
+    const err = new Error('You must be an approved member of this group');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date);
+
+  const byTutor = new Map();
+
+  for (const av of availabilities) {
+    const dateStr = toDateString(av.available_date) || String(av.available_date).slice(0, 10);
+    const startTime = typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00';
+    const endTime = typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59';
+
+    const slots = generateSlots({
+      dateStr,
+      startTime,
+      endTime,
+      sessionDuration: av.session_duration,
+    });
+
+    for (const slot of slots) {
+      if (isPast(slot.start)) continue;
+
+      const count = await bookingModel.countBookingsForSlot(av.id, slot.start, slot.end);
+      if (count >= av.max_students_per_slot) continue;
+
+      if (!byTutor.has(av.tutor_id)) {
+        byTutor.set(av.tutor_id, {
+          tutorId: av.tutor_id,
+          email: av.tutor_email,
+          bio: av.tutor_bio || null,
+          subjects: Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [],
+          slots: [],
+        });
+      }
+      byTutor.get(av.tutor_id).slots.push({
+        availabilityId: av.id,
+        startTime: slot.start,
+        endTime: slot.end,
+      });
+    }
+  }
+
+  return Array.from(byTutor.values()).map((t) => ({
+    ...t,
+    slots: t.slots.sort((a, b) => new Date(a.startTime) - new Date(b.startTime)),
+  }));
 };

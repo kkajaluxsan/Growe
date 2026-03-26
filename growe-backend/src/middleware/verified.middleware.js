@@ -4,7 +4,7 @@ export const requireVerified = (req, res, next) => {
   }
   if (!req.user.isVerified) {
     return res.status(403).json({
-      error: 'Email verification required',
+      error: 'Please verify your email to unlock all features',
       code: 'EMAIL_NOT_VERIFIED',
     });
   }

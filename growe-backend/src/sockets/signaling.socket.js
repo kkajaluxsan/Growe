@@ -25,10 +25,16 @@ export const initSignaling = (httpServer) => {
     if (!user || !user.is_active) {
       return next(new Error('User not found or inactive'));
     }
+    if (!user.is_verified) {
+      return next(new Error('EMAIL_NOT_VERIFIED'));
+    }
     socket.userId = user.id;
     socket.userEmail = user.email;
     next();
   });
+
+  // Track meeting participants for targeted signaling
+  const meetingUserSocket = new Map(); // meetingId -> Map(userId -> { socketId, email })
 
   io.on('connection', (socket) => {
     socket.on('join-room', async (data, callback) => {
@@ -54,13 +60,21 @@ export const initSignaling = (httpServer) => {
         const roomName = `meeting-${meetingId}`;
         await socket.join(roomName);
         await meetingModel.addParticipant(meetingId, socket.userId);
+        await meetingModel.markStartedIfNeeded(meetingId);
+
+        if (!meetingUserSocket.has(meetingId)) meetingUserSocket.set(meetingId, new Map());
+        const userMap = meetingUserSocket.get(meetingId);
+        userMap.set(socket.userId, { socketId: socket.id, email: socket.userEmail });
+        const existingParticipants = Array.from(userMap.entries())
+          .filter(([uid]) => uid !== socket.userId)
+          .map(([uid, info]) => ({ userId: uid, userEmail: info?.email }));
 
         socket.to(roomName).emit('user-joined', {
           userId: socket.userId,
           userEmail: socket.userEmail,
         });
 
-        callback?.({ success: true });
+        callback?.({ success: true, existingParticipants });
       } catch (err) {
         console.error('join-room error:', err);
         callback?.({ error: err.message || 'Failed to join room' });
@@ -75,6 +89,9 @@ export const initSignaling = (httpServer) => {
           await meetingModel.setParticipantLeft(meetingId, socket.userId);
           socket.to(roomName).emit('user-left', { userId: socket.userId });
           socket.leave(roomName);
+          const userMap = meetingUserSocket.get(meetingId);
+          userMap?.delete(socket.userId);
+          if (userMap && userMap.size === 0) meetingUserSocket.delete(meetingId);
         }
         callback?.({ success: true });
       } catch (err) {
@@ -86,30 +103,30 @@ export const initSignaling = (httpServer) => {
     socket.on('offer', (data) => {
       const { meetingId, targetUserId, sdp } = data;
       if (meetingId && targetUserId && sdp) {
-        socket.to(`meeting-${meetingId}`).emit('offer', {
-          fromUserId: socket.userId,
-          sdp,
-        });
+        const target = meetingUserSocket.get(meetingId)?.get(targetUserId);
+        const targetSocketId = target?.socketId;
+        if (!targetSocketId) return;
+        io.to(targetSocketId).emit('offer', { fromUserId: socket.userId, fromUserEmail: socket.userEmail, sdp });
       }
     });
 
     socket.on('answer', (data) => {
       const { meetingId, targetUserId, sdp } = data;
       if (meetingId && targetUserId && sdp) {
-        socket.to(`meeting-${meetingId}`).emit('answer', {
-          fromUserId: socket.userId,
-          sdp,
-        });
+        const target = meetingUserSocket.get(meetingId)?.get(targetUserId);
+        const targetSocketId = target?.socketId;
+        if (!targetSocketId) return;
+        io.to(targetSocketId).emit('answer', { fromUserId: socket.userId, fromUserEmail: socket.userEmail, sdp });
       }
     });
 
     socket.on('ice-candidate', (data) => {
       const { meetingId, targetUserId, candidate } = data;
       if (meetingId && targetUserId && candidate) {
-        socket.to(`meeting-${meetingId}`).emit('ice-candidate', {
-          fromUserId: socket.userId,
-          candidate,
-        });
+        const target = meetingUserSocket.get(meetingId)?.get(targetUserId);
+        const targetSocketId = target?.socketId;
+        if (!targetSocketId) return;
+        io.to(targetSocketId).emit('ice-candidate', { fromUserId: socket.userId, fromUserEmail: socket.userEmail, candidate });
       }
     });
 
@@ -141,6 +158,9 @@ export const initSignaling = (httpServer) => {
         try {
           await meetingModel.setParticipantLeft(meetingId, socket.userId);
           socket.to(room).emit('user-left', { userId: socket.userId });
+          const userMap = meetingUserSocket.get(meetingId);
+          userMap?.delete(socket.userId);
+          if (userMap && userMap.size === 0) meetingUserSocket.delete(meetingId);
         } catch (err) {
           console.error('Disconnect cleanup error:', err);
         }

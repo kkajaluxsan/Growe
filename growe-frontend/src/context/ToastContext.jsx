@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 const ToastContext = createContext(null);
 
@@ -36,6 +36,30 @@ export const ToastProvider = ({ children }) => {
   toast.success = (msg, opts) => add(msg, { ...opts, variant: 'success' });
   toast.error = (msg, opts) => add(msg, { ...opts, variant: 'error', duration: 6000 });
   toast.warning = (msg, opts) => add(msg, { ...opts, variant: 'warning' });
+
+  useEffect(() => {
+    // Global API error toasts (emitted by axios client).
+    const handler = (e) => {
+      const { status, message, data } = e.detail || {};
+      if (!status) return;
+      // Avoid spamming toasts for auth redirects; UI already handles those.
+      if (status === 401) return;
+      if (status === 403 && data?.code === 'EMAIL_NOT_VERIFIED') {
+        toast.warning(message || 'Please verify your email to unlock all features');
+        return;
+      }
+      if (status === 400 || status === 409) {
+        toast.error(message || 'Request failed');
+        return;
+      }
+      if (status >= 500) {
+        toast.error('Server error. Please try again.');
+        return;
+      }
+    };
+    window.addEventListener('api-error', handler);
+    return () => window.removeEventListener('api-error', handler);
+  }, [toast]);
 
   return (
     <ToastContext.Provider value={{ toast, toasts, remove }}>

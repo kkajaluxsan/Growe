@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useSocket } from '../../context/SocketContext';
+import EmailVerificationBanner from '../common/EmailVerificationBanner';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -29,6 +30,7 @@ export default function Layout() {
           {offline ? "You're offline. Some features may be unavailable." : 'Reconnecting…'}
         </div>
       )}
+      <EmailVerificationBanner />
       <div className="flex-1 flex min-h-0">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0 min-h-0">

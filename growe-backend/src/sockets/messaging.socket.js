@@ -55,14 +55,18 @@ export const initMessaging = (io) => {
           callback?.({ error: 'Conversation ID and content required' });
           return;
         }
-        const isParticipant = await conversationModel.isParticipant(conversationId, socket.userId);
-        if (!isParticipant) {
-          callback?.({ error: 'Access denied' });
-          return;
-        }
         const user = await userModel.findById(socket.userId);
         if (!user?.is_active) {
           callback?.({ error: 'Account is deactivated' });
+          return;
+        }
+        if (!user.is_verified) {
+          callback?.({ error: 'Please verify your email to unlock all features', code: 'EMAIL_NOT_VERIFIED' });
+          return;
+        }
+        const isParticipant = await conversationModel.isParticipant(conversationId, socket.userId);
+        if (!isParticipant) {
+          callback?.({ error: 'Access denied' });
           return;
         }
         const profile = await tutorModel.findProfileByUserId(socket.userId);
@@ -93,6 +97,8 @@ export const initMessaging = (io) => {
       try {
         const { conversationId } = data || {};
         if (!conversationId) return;
+        const user = await userModel.findById(socket.userId);
+        if (!user?.is_active || !user.is_verified) return;
         const isParticipant = await conversationModel.isParticipant(conversationId, socket.userId);
         if (!isParticipant) return;
         const key = `${socket.userId}-${conversationId}`;
@@ -118,6 +124,15 @@ export const initMessaging = (io) => {
         const { conversationId } = data || {};
         if (!conversationId) {
           callback?.({ error: 'Conversation ID required' });
+          return;
+        }
+        const user = await userModel.findById(socket.userId);
+        if (!user?.is_active) {
+          callback?.({ error: 'Account is deactivated' });
+          return;
+        }
+        if (!user.is_verified) {
+          callback?.({ error: 'Please verify your email to unlock all features', code: 'EMAIL_NOT_VERIFIED' });
           return;
         }
         const isParticipant = await conversationModel.isParticipant(conversationId, socket.userId);
@@ -183,6 +198,13 @@ export const initMessaging = (io) => {
     });
 
     socket.on('disconnect', () => {
+      // Ensure typing indicators don't remain stuck for others.
+      Array.from(socket.rooms)
+        .filter((r) => r.startsWith('conversation-'))
+        .forEach((room) => {
+          const conversationId = room.replace('conversation-', '');
+          socket.to(room).emit('stop-typing', { userId: socket.userId, conversationId });
+        });
       typingTimers.forEach((t, key) => {
         if (key.startsWith(socket.userId + '-')) {
           clearTimeout(t);

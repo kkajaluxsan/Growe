@@ -78,12 +78,40 @@ export const approveMember = async (groupId, userId) => {
   return rows[0] || null;
 };
 
+export const rejectMember = async (groupId, userId) => {
+  const { rows } = await query(
+    `UPDATE group_members SET status = 'rejected'
+     WHERE group_id = $1 AND user_id = $2 AND status = 'pending'
+     RETURNING id, group_id, user_id, status, joined_at, created_at`,
+    [groupId, userId]
+  );
+  return rows[0] || null;
+};
+
 export const getMember = async (groupId, userId) => {
   const { rows } = await query(
     'SELECT id, group_id, user_id, status, joined_at FROM group_members WHERE group_id = $1 AND user_id = $2',
     [groupId, userId]
   );
   return rows[0] || null;
+};
+
+export const searchUsersNotInGroup = async (groupId, queryText, { limit = 10, offset = 0 } = {}) => {
+  const q = (queryText || '').trim();
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.display_name
+     FROM users u
+     WHERE (u.email ILIKE $2 OR COALESCE(u.display_name, '') ILIKE $2)
+       AND u.is_active = true
+       AND u.is_verified = true
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members gm WHERE gm.group_id = $1 AND gm.user_id = u.id
+       )
+     ORDER BY u.email
+     LIMIT $3 OFFSET $4`,
+    [groupId, `%${q}%`, limit, offset]
+  );
+  return rows;
 };
 
 export const listMembers = async (groupId) => {

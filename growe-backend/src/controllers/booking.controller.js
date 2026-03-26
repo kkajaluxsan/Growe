@@ -69,7 +69,11 @@ export const cancel = async (req, res, next) => {
     if (!isStudent && !isTutor) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    const updated = await bookingService.updateBookingStatus(req.params.id, 'cancelled');
+    const updated = await bookingService.updateBookingStatus(
+      req.params.id,
+      'cancelled',
+      isTutor ? 'tutor' : 'student'
+    );
     res.json(updated);
   } catch (err) {
     if (err.statusCode) {

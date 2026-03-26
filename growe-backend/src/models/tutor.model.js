@@ -55,7 +55,7 @@ export const setSuspended = async (userId, isSuspended) => {
 export const createAvailability = async ({ tutorId, availableDate, startTime, endTime, sessionDuration, isRecurring = false, maxStudentsPerSlot = 1 }) => {
   const { rows } = await query(
     `INSERT INTO tutor_availability (tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     VALUES ($1, $2::date, $3, $4, $5, $6, $7)
      RETURNING id, tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at`,
     [tutorId, availableDate, startTime, endTime, sessionDuration, isRecurring, maxStudentsPerSlot]
   );
@@ -77,9 +77,9 @@ export const listAvailabilityByTutor = async (tutorId, { fromDate, toDate } = {}
              FROM tutor_availability WHERE tutor_id = $1`;
   const params = [tutorId];
   let i = 2;
-  if (fromDate) { sql += ` AND available_date >= $${i}`; params.push(fromDate); i++; }
-  if (toDate) { sql += ` AND available_date <= $${i}`; params.push(toDate); i++; }
-  sql += ' ORDER BY available_date, start_time';
+  if (fromDate) { sql += ` AND available_date::date >= $${i}::date`; params.push(fromDate); i++; }
+  if (toDate) { sql += ` AND available_date::date <= $${i}::date`; params.push(toDate); i++; }
+  sql += ' ORDER BY available_date::date, start_time';
   const { rows } = await query(sql, params);
   return rows;
 };
@@ -88,14 +88,30 @@ export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } =
   let sql = `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
                     tp.user_id as tutor_user_id, u.email as tutor_email
              FROM tutor_availability ta JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
-             WHERE tp.is_suspended = false AND ta.available_date >= CURRENT_DATE`;
+             WHERE tp.is_suspended = false AND ta.available_date::date >= CURRENT_DATE`;
   const params = [];
   let i = 1;
   if (tutorId) { sql += ` AND ta.tutor_id = $${i}`; params.push(tutorId); i++; }
-  if (fromDate) { sql += ` AND ta.available_date >= $${i}`; params.push(fromDate); i++; }
-  if (toDate) { sql += ` AND ta.available_date <= $${i}`; params.push(toDate); i++; }
-  sql += ' ORDER BY ta.available_date, ta.start_time';
+  if (fromDate) { sql += ` AND ta.available_date::date >= $${i}::date`; params.push(fromDate); i++; }
+  if (toDate) { sql += ` AND ta.available_date::date <= $${i}::date`; params.push(toDate); i++; }
+  sql += ' ORDER BY ta.available_date::date, ta.start_time';
   const { rows } = await query(sql, params);
+  return rows;
+};
+
+export const listAvailabilityForTutorsOnDate = async (dateStr) => {
+  const { rows } = await query(
+    `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
+            tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects, u.email as tutor_email
+     FROM tutor_availability ta
+     JOIN tutor_profiles tp ON ta.tutor_id = tp.id
+     JOIN users u ON tp.user_id = u.id
+     WHERE tp.is_suspended = false
+       AND ta.available_date::date = $1::date
+       AND ta.available_date::date >= CURRENT_DATE
+     ORDER BY ta.start_time`,
+    [dateStr]
+  );
   return rows;
 };
 

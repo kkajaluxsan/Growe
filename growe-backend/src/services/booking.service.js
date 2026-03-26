@@ -16,6 +16,17 @@ const CANCELLATION_WINDOW_HOURS = 24;
 const MAX_CANCELLATIONS_PER_DAYS = 30;
 const MAX_CANCELLATIONS_IN_PERIOD = 3;
 
+function toLocalDateString(val) {
+  if (!val) return null;
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10);
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export const createBooking = async ({ availabilityId, studentId, startTime, endTime }) => {
   const availability = await tutorModel.findAvailabilityById(availabilityId);
   if (!availability) {
@@ -40,11 +51,17 @@ export const createBooking = async ({ availabilityId, studentId, startTime, endT
   }
 
   const dateStr = availability.available_date;
+  const dateStrFixed = toLocalDateString(dateStr);
+  if (!dateStrFixed) {
+    const err = new Error('Invalid availability date');
+    err.statusCode = 500;
+    throw err;
+  }
   const st = typeof availability.start_time === 'string' ? availability.start_time : availability.start_time?.slice(0, 8);
   const et = typeof availability.end_time === 'string' ? availability.end_time : availability.end_time?.slice(0, 8);
 
   const validSlots = generateSlots({
-    dateStr,
+    dateStr: dateStrFixed,
     startTime: st,
     endTime: et,
     sessionDuration: availability.session_duration,
@@ -60,18 +77,8 @@ export const createBooking = async ({ availabilityId, studentId, startTime, endT
   }
 
   return transaction(async (client) => {
-    const overlapTutor = await client.query(
-      `SELECT id FROM bookings
-       WHERE availability_id = $1 AND status NOT IN ('cancelled')
-         AND start_time < $3 AND end_time > $2
-       FOR UPDATE`,
-      [availabilityId, startTime, endTime]
-    );
-    if (overlapTutor.rows.length > 0) {
-      const err = new Error('Time slot is no longer available');
-      err.statusCode = 409;
-      throw err;
-    }
+    // If max_students_per_slot > 1, multiple students can book the same slot up to capacity.
+    // We rely on the locked count check below to enforce capacity.
 
     const overlapStudent = await client.query(
       `SELECT id FROM bookings
@@ -123,7 +130,7 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
     throw err;
   }
 
-  if (newStatus === 'cancelled') {
+  if (newStatus === 'cancelled' && (actorRole || 'student') === 'student') {
     const start = new Date(booking.start_time);
     const now = new Date();
     const hoursUntil = (start - now) / (60 * 60 * 1000);

@@ -26,6 +26,8 @@ const resendLimiter = rateLimit({
 
 router.post('/register', authLimiter, validateRegister, authController.register);
 router.post('/login', authLimiter, validateLogin, authController.login);
+router.post('/google', authLimiter, authController.googleLogin);
+router.post('/logout', authController.logout);
 router.get('/verify-email', authController.verifyEmail);
 router.post(
   '/request-verification-email',
@@ -34,9 +36,13 @@ router.post(
   authController.requestVerificationEmail
 );
 router.post('/resend-verification', authenticate, resendLimiter, authController.resendVerification);
-router.post('/refresh-token', authenticate, authController.refreshToken);
+router.post('/refresh-token', authController.refreshToken);
+// Alias for clients expecting `/auth/refresh`
+router.post('/refresh', authController.refreshToken);
+router.post('/forgot-password', resendLimiter, authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
-router.get('/me', authenticate, requireVerified, authController.getProfile);
+router.get('/me', authenticate, authController.getProfile);
 router.patch('/me', authenticate, requireVerified, authController.updateProfile);
 router.post('/me/avatar', authenticate, requireVerified, (req, res, next) => {
   uploadAvatar(req, res, (err) => {

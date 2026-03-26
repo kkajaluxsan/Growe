@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import api from '../../services/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [needsVerification, setNeedsVerification] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
-  const { login, requestVerificationEmail } = useAuth();
+  const { login } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,45 +21,20 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setNeedsVerification(false);
     setLoading(true);
     try {
-      await login(email, password);
+      const data = await login(email, password);
+      if (data?.user && data.user.isVerified === false) {
+        toast.error(data?.message || 'Please verify your email to unlock all features');
+        navigate('/verify-email', { replace: true });
+        return;
+      }
       navigate(from, { replace: true });
     } catch (err) {
       const res = err.response?.data;
-      const status = err.response?.status;
-      if (status === 403 && res?.code === 'EMAIL_NOT_VERIFIED') {
-        setNeedsVerification(true);
-        setError(res.error || 'Please verify your email before signing in.');
-        if (res.email) setEmail(res.email);
-      } else {
-        setError(res?.error || res?.message || 'Login failed');
-      }
+      setError(res?.error || res?.message || 'Login failed');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleResend = async () => {
-    const addr = email.trim();
-    if (!addr) {
-      toast.error('Enter your email address above first.');
-      return;
-    }
-    setResendLoading(true);
-    try {
-      await requestVerificationEmail(addr);
-      toast.success('If this account is pending verification, we sent a new link. Check your inbox.');
-    } catch (err) {
-      const res = err.response?.data;
-      if (err.response?.status === 429) {
-        toast.error(res?.error || 'Too many requests. Try again later.');
-      } else {
-        toast.error(res?.error || 'Could not send email. Try again later.');
-      }
-    } finally {
-      setResendLoading(false);
     }
   };
 
@@ -70,31 +45,10 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div
-              className={`p-3 rounded-2xl text-sm ${
-                needsVerification
-                  ? 'bg-amber-50 text-amber-900 dark:bg-amber-900/25 dark:text-amber-100 border border-amber-200 dark:border-amber-800'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-              }`}
+              className="p-3 rounded-2xl text-sm bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
               role="alert"
             >
               {error}
-            </div>
-          )}
-          {needsVerification && (
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-3">
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Didn&apos;t get the email? We can send another verification link to the address you used at signup.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                loading={resendLoading}
-                disabled={resendLoading}
-                onClick={handleResend}
-              >
-                Resend verification email
-              </Button>
             </div>
           )}
           <div>
@@ -122,6 +76,33 @@ export default function Login() {
           <Button type="submit" className="w-full" loading={loading} disabled={loading}>
             Login
           </Button>
+          <div className="flex justify-center">
+            {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
+              <GoogleLogin
+                onSuccess={async (cred) => {
+                  try {
+                    const { data } = await api.post('/auth/google', { idToken: cred.credential });
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
+                    navigate(from, { replace: true });
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || 'Google login failed');
+                  }
+                }}
+                onError={() => toast.error('Google login failed')}
+              />
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+                Google sign-in is not configured. Set <span className="font-mono">VITE_GOOGLE_CLIENT_ID</span> and restart the frontend.
+              </p>
+            )}
+          </div>
+          <div className="text-center">
+            <Link to="/forgot-password" className="text-sm text-slate-600 dark:text-slate-400 hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <p className="text-center text-sm text-slate-600 dark:text-slate-400">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="text-slate-800 dark:text-slate-200 font-medium hover:underline">

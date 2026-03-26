@@ -57,11 +57,13 @@ export default function ChatWindow({ conversationId, conversation, participants,
     socket.emit('join-conversation', { conversationId }, (res) => {
       if (res?.error) toast.error(res.error);
     });
-    api.post(`/conversations/${conversationId}/read`).catch(() => {});
+    api.post(`/conversations/${conversationId}/read`)
+      .then(() => onConversationLoad?.())
+      .catch(() => {});
     return () => {
       socket.emit('leave-conversation', { conversationId });
     };
-  }, [socket, conversationId, toast]);
+  }, [socket, conversationId, toast, onConversationLoad]);
 
   useEffect(() => {
     if (!socket || !conversationId) return;
@@ -121,11 +123,12 @@ export default function ChatWindow({ conversationId, conversation, participants,
         } else if (res?.message) {
           setMessages((prev) => (prev.some((m) => m.id === res.message.id) ? prev : [...prev, res.message]));
           scrollToBottom();
+          onConversationLoad?.();
         }
         socket.emit('stop-typing', { conversationId });
+        setSending(false);
       }
     );
-    setSending(false);
   };
 
   const handleTyping = () => {

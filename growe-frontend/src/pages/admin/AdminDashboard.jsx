@@ -27,8 +27,10 @@ export default function AdminDashboard() {
   const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
-    api.get('/admin/metrics').then(({ data }) => setMetrics(data)).catch(() => {});
-  }, []);
+    api.get('/admin/metrics')
+      .then(({ data }) => setMetrics(data))
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load metrics'));
+  }, [toast]);
 
   useEffect(() => {
     setLoading(true);

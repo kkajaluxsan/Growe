@@ -12,6 +12,7 @@ import authRoutes from './routes/auth.routes.js';
 import groupRoutes from './routes/group.routes.js';
 import assignmentRoutes from './routes/assignment.routes.js';
 import tutorRoutes from './routes/tutor.routes.js';
+import tutorAvailabilityAliasRoutes from './routes/tutorAvailabilityAlias.routes.js';
 import bookingRoutes from './routes/booking.routes.js';
 import meetingRoutes from './routes/meeting.routes.js';
 import adminRoutes from './routes/admin.routes.js';
@@ -53,11 +54,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/tutors', tutorRoutes);
+app.use('/api/tutor', tutorAvailabilityAliasRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
-app.use('/api', messagingRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -76,6 +77,9 @@ app.get('/api/health', async (req, res) => {
     });
   }
 });
+
+// Keep messaging routes after public endpoints like /api/health
+app.use('/api', messagingRoutes);
 
 app.use(errorHandler);
 

@@ -13,11 +13,13 @@ const viewTabs = [
 export default function MeetingList() {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [view, setView] = useState('list');
 
   useEffect(() => {
     api.get('/meetings')
       .then(({ data }) => setMeetings(data))
+      .catch((err) => setError(err.response?.data?.error || 'Failed to load meetings'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -51,6 +53,10 @@ export default function MeetingList() {
         <>
           {loading ? (
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-growe" />
+          ) : error ? (
+            <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+              {error}
+            </Card>
           ) : (
             <div className="grid gap-4">
               {meetings.length === 0 ? (

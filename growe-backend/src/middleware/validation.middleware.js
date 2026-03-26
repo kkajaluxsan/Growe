@@ -166,7 +166,11 @@ export const validateTutorProfile = (req, res, next) => {
 };
 
 export const validateAvailabilityCreate = (req, res, next) => {
-  const { availableDate, startTime, endTime, sessionDuration, isRecurring, maxStudentsPerSlot } = req.body;
+  const availableDate = req.body.availableDate ?? req.body.available_date;
+  const startTime = req.body.startTime ?? req.body.start_time;
+  const endTime = req.body.endTime ?? req.body.end_time;
+  const sessionDuration = req.body.sessionDuration ?? req.body.session_duration;
+  const maxStudentsPerSlot = req.body.maxStudentsPerSlot ?? req.body.max_students_per_slot;
   const errors = [];
 
   if (!availableDate || typeof availableDate !== 'string') {
@@ -175,6 +179,14 @@ export const validateAvailabilityCreate = (req, res, next) => {
     const d = new Date(availableDate);
     if (isNaN(d.getTime())) {
       errors.push('Invalid date format');
+    } else {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const input = new Date(availableDate);
+      input.setHours(0, 0, 0, 0);
+      if (input.getTime() < today.getTime()) {
+        errors.push('Available date cannot be in the past');
+      }
     }
   }
 
@@ -184,13 +196,18 @@ export const validateAvailabilityCreate = (req, res, next) => {
   if (!endTime || typeof endTime !== 'string') {
     errors.push('End time is required');
   }
+  if (startTime && endTime && typeof startTime === 'string' && typeof endTime === 'string') {
+    if (startTime >= endTime) {
+      errors.push('Start time must be less than end time');
+    }
+  }
 
   if (sessionDuration === undefined || sessionDuration === null) {
     errors.push('Session duration is required');
   } else {
     const sd = parseInt(sessionDuration, 10);
-    if (isNaN(sd) || sd < 1 || sd > 480) {
-      errors.push('Session duration must be between 1 and 480 minutes');
+    if (isNaN(sd) || sd < 15 || sd > 480) {
+      errors.push('Session duration must be between 15 and 480 minutes');
     }
   }
 
@@ -204,6 +221,13 @@ export const validateAvailabilityCreate = (req, res, next) => {
   if (errors.length > 0) {
     return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
   }
+
+  // Normalize to canonical camelCase for controllers/services
+  req.body.availableDate = availableDate;
+  req.body.startTime = startTime;
+  req.body.endTime = endTime;
+  req.body.sessionDuration = sessionDuration;
+  if (maxStudentsPerSlot !== undefined) req.body.maxStudentsPerSlot = maxStudentsPerSlot;
   next();
 };
 

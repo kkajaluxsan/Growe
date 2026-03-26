@@ -14,26 +14,52 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    if (token && savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-        api.get('/auth/me').then(({ data }) => {
-          setUser(data);
-          localStorage.setItem('user', JSON.stringify(data));
-        }).catch(() => {
-          localStorage.removeItem('token');
+    let cancelled = false;
+    const bootstrap = async () => {
+      setLoading(true);
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) {
+        try {
+          setUser(JSON.parse(savedUser));
+        } catch {
           localStorage.removeItem('user');
-          setUser(null);
-        });
-      } catch {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
+        }
       }
-    }
-    setLoading(false);
+      try {
+        // Primary: attempt to restore session via refresh cookie (no access token required)
+        const { data: refreshed } = await api.post('/auth/refresh-token');
+        if (cancelled) return;
+        localStorage.setItem('token', refreshed.token);
+        if (refreshed.user) {
+          localStorage.setItem('user', JSON.stringify(refreshed.user));
+          setUser(refreshed.user);
+        }
+      } catch (_) {
+        // Secondary: if access token exists, validate by fetching /me
+        const token = localStorage.getItem('token');
+        if (token) {
+          try {
+            const { data } = await api.get('/auth/me');
+            if (cancelled) return;
+            setUser(data);
+            localStorage.setItem('user', JSON.stringify(data));
+          } catch {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            if (!cancelled) setUser(null);
+          }
+        } else {
+          localStorage.removeItem('user');
+          if (!cancelled) setUser(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -62,6 +88,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    api.post('/auth/logout').catch(() => {});
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
@@ -74,8 +101,11 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  const isAuthenticated = !!user;
+  const isVerified = !!user?.isVerified;
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, requestVerificationEmail }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, isVerified, login, register, logout, refreshUser, requestVerificationEmail }}>
       {children}
     </AuthContext.Provider>
   );

@@ -10,6 +10,7 @@ import ShareButton from '../../components/ui/ShareButton';
 import ChatWindow from '../messaging/ChatWindow';
 import { LocalVideoTile, RemoteVideoTile } from './meeting/VideoTile';
 import MeetingControlBar from './meeting/MeetingControlBar';
+import { useToast } from '../../context/ToastContext';
 
 function useMeetingDuration(started) {
   const [duration, setDuration] = useState('0:00');
@@ -38,10 +39,12 @@ export default function MeetingRoom() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { socket } = useSocket();
+  const { toast } = useToast();
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peersRef = useRef({});
   const [remoteStreams, setRemoteStreams] = useState({});
+  const [participantMeta, setParticipantMeta] = useState({});
   const [muted, setMuted] = useState(false);
   const [videoOff, setVideoOff] = useState(false);
   const [error, setError] = useState('');
@@ -88,16 +91,18 @@ export default function MeetingRoom() {
   };
 
   useEffect(() => {
-    api.get(`/meetings/${id}`).then(({ data }) => setMeetingTitle(data?.title || 'Meeting')).catch(() => {});
-  }, [id]);
+    api.get(`/meetings/${id}`)
+      .then(({ data }) => setMeetingTitle(data?.title || 'Meeting'))
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load meeting'));
+  }, [id, toast]);
 
   useEffect(() => {
     if (!id || !user) return;
     api
-      .get(`/conversations/meeting/${id}`)
+      .post(`/conversations/meeting/${id}`)
       .then(({ data }) => setMeetingConversation(data))
-      .catch(() => {});
-  }, [id, user]);
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load meeting chat'));
+  }, [id, user, toast]);
 
   useEffect(() => {
     if (!socket || !user) return;
@@ -114,6 +119,17 @@ export default function MeetingRoom() {
             return;
           }
           setJoined(true);
+          if (Array.isArray(res?.existingParticipants)) {
+            res.existingParticipants.forEach((p) => {
+              const uid = p?.userId;
+              if (uid && uid !== user.id) {
+                if (p?.userEmail) {
+                  setParticipantMeta((prev) => ({ ...prev, [uid]: { email: p.userEmail } }));
+                }
+                createPeer(uid);
+              }
+            });
+          }
         });
       } catch (err) {
         setError('Could not access camera/microphone');
@@ -122,7 +138,10 @@ export default function MeetingRoom() {
 
     initMedia();
 
-    socket.on('user-joined', ({ userId }) => {
+    socket.on('user-joined', ({ userId, userEmail }) => {
+      if (userId && userEmail) {
+        setParticipantMeta((prev) => ({ ...prev, [userId]: { email: userEmail } }));
+      }
       createPeer(userId);
     });
 
@@ -143,7 +162,10 @@ export default function MeetingRoom() {
       setTimeout(() => navigate('/meetings'), 2000);
     });
 
-    socket.on('offer', async ({ fromUserId, sdp }) => {
+    socket.on('offer', async ({ fromUserId, fromUserEmail, sdp }) => {
+      if (fromUserId && fromUserEmail) {
+        setParticipantMeta((prev) => ({ ...prev, [fromUserId]: { email: fromUserEmail } }));
+      }
       const pc = peersRef.current[fromUserId] || createPeer(fromUserId);
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       const answer = await pc.createAnswer();
@@ -151,12 +173,18 @@ export default function MeetingRoom() {
       socket.emit('answer', { meetingId: id, targetUserId: fromUserId, sdp: answer });
     });
 
-    socket.on('answer', async ({ fromUserId, sdp }) => {
+    socket.on('answer', async ({ fromUserId, fromUserEmail, sdp }) => {
+      if (fromUserId && fromUserEmail) {
+        setParticipantMeta((prev) => ({ ...prev, [fromUserId]: { email: fromUserEmail } }));
+      }
       const pc = peersRef.current[fromUserId];
       if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
     });
 
-    socket.on('ice-candidate', async ({ fromUserId, candidate }) => {
+    socket.on('ice-candidate', async ({ fromUserId, fromUserEmail, candidate }) => {
+      if (fromUserId && fromUserEmail) {
+        setParticipantMeta((prev) => ({ ...prev, [fromUserId]: { email: fromUserEmail } }));
+      }
       const pc = peersRef.current[fromUserId];
       if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
     });
@@ -372,7 +400,9 @@ export default function MeetingRoom() {
               {Object.keys(remoteStreams).map((uid) => (
                 <li key={uid} className="mt-1 flex items-center gap-2 rounded-xl px-3 py-2 hover:bg-white/5">
                   <span className="h-2 w-2 shrink-0 rounded-full bg-slate-500" aria-hidden />
-                  <span className="truncate">Guest · {String(uid).slice(0, 8)}</span>
+                  <span className="truncate">
+                    {participantMeta[uid]?.email || `Guest · ${String(uid).slice(0, 8)}`}
+                  </span>
                   {handsRaised[uid] && <span className="text-xs">✋</span>}
                 </li>
               ))}
@@ -405,6 +435,7 @@ export default function MeetingRoom() {
                 stream={stream}
                 handRaised={handsRaised[uid]}
                 isSpeaking={speakingUser != null && String(speakingUser) === String(uid)}
+                displayName={participantMeta[uid]?.email}
               />
             ))}
           </div>

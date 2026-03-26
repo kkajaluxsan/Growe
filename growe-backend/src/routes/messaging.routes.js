@@ -20,6 +20,8 @@ router.get('/conversations', messagingController.listConversations);
 router.get('/conversations/eligible-users', messagingController.getEligibleUsers);
 router.post('/conversations/direct/:userId', messagingController.getOrCreateDirect);
 router.post('/conversations/group/:groupId', messagingController.getOrCreateGroup);
+// Creating a conversation is a side effect; prefer POST (keep GET for backward compatibility).
+router.post('/conversations/meeting/:meetingId', messagingController.getOrCreateMeeting);
 router.get('/conversations/meeting/:meetingId', messagingController.getOrCreateMeeting);
 router.get('/conversations/:id', messagingController.getConversation);
 router.get('/conversations/:id/messages', messagingController.getMessages);
