@@ -3,6 +3,8 @@ import * as userModel from '../models/user.model.js';
 import * as userProfileModel from '../models/userProfile.model.js';
 import * as roleModel from '../models/role.model.js';
 import * as emailVerificationModel from '../models/emailVerification.model.js';
+import * as passwordResetModel from '../models/passwordReset.model.js';
+import * as refreshTokenModel from '../models/refreshToken.model.js';
 import * as bookingModel from '../models/booking.model.js';
 import { signToken } from '../config/jwt.js';
 import {
@@ -10,13 +12,51 @@ import {
   getVerificationExpiryDate,
   getVerificationExpiryLabel,
 } from '../utils/generateToken.js';
-import { sendVerificationEmail } from '../services/email.service.js';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.service.js';
+import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
 
 const BCRYPT_ROUNDS = 12;
 
+const ACCESS_TOKEN_TTL = '15m';
+const REFRESH_TOKEN_DAYS = 7;
+
+const getRefreshCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax',
+    path: '/api/auth',
+    maxAge: REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+  };
+};
+
+const issueAuthResponse = async (res, user) => {
+  const accessToken = signToken({ userId: user.id, email: user.email }, ACCESS_TOKEN_TTL);
+  const refreshToken = generateVerificationToken(32);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+  await refreshTokenModel.create({ userId: user.id, token: refreshToken, expiresAt });
+
+  res.cookie('refresh_token', refreshToken, getRefreshCookieOptions());
+
+  return {
+    token: accessToken,
+    message: user.is_verified ? 'Login successful' : 'Please verify your email to unlock all features',
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.display_name,
+      avatarUrl: user.avatar_url,
+      roleName: user.role_name,
+      isVerified: user.is_verified,
+      provider: user.provider,
+    },
+  };
+};
+
 export const register = async (req, res, next) => {
   try {
-    const { email, password, roleName } = req.body;
+    const { email, password, roleName, name } = req.body;
 
     const existing = await userModel.findByEmail(email);
     if (existing) {
@@ -34,6 +74,9 @@ export const register = async (req, res, next) => {
       passwordHash,
       roleId: role.id,
     });
+    if (name && typeof name === 'string' && name.trim()) {
+      await userModel.updateProfile(user.id, { displayName: name.trim() });
+    }
 
     const token = generateVerificationToken();
     const expiresAt = getVerificationExpiryDate();
@@ -46,49 +89,50 @@ export const register = async (req, res, next) => {
 
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${encodeURIComponent(token)}`;
 
-    const skipEmailVerification =
-      process.env.NODE_ENV === 'development' &&
-      process.env.FORCE_EMAIL_VERIFICATION !== '1' &&
-      !process.env.SMTP_USER;
-
-    let isVerified = false;
-    if (skipEmailVerification) {
-      await userModel.updateVerification(user.id, true);
-      await emailVerificationModel.deleteByUserId(user.id);
-      isVerified = true;
-    } else {
-      try {
-        await sendVerificationEmail({
-          email: user.email,
-          token,
-          expiresIn: expiryLabel,
-        });
-      } catch (emailErr) {
-        console.error('Verification email failed:', emailErr);
-        return res.status(503).json({
-          success: false,
-          error:
-            'Account created but we could not send the verification email. On the login page, use "Resend verification email" with your address, or configure SMTP.',
-        });
-      }
+    let emailSent = false;
+    let emailSendError = null;
+    try {
+      await sendVerificationEmail({
+        email: user.email,
+        token,
+        expiresIn: expiryLabel,
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      emailSendError = emailErr;
+      console.error('Verification email failed:', emailErr);
+      // Keep account unverified; user can request a new link later.
     }
 
     const payload = {
-      message: skipEmailVerification
-        ? 'Registration successful. You can log in now (dev: email skip).'
-        : 'Registration successful. Please verify your email by clicking the link we sent you.',
+      message: 'Registration successful. Please verify your email by clicking the link we sent you.',
+      emailSent,
       user: {
         id: user.id,
         email: user.email,
         roleName,
-        isVerified,
+        isVerified: false,
       },
     };
     if (process.env.NODE_ENV === 'development') {
       payload.verificationLink = verificationUrl;
     }
+    const mustDeliverEmail =
+      process.env.NODE_ENV === 'production' ||
+      process.env.FORCE_EMAIL_VERIFICATION === '1' ||
+      !!process.env.SMTP_USER;
+    if (!emailSent && mustDeliverEmail) {
+      return res.status(503).json({
+        success: false,
+        error: 'Failed to send verification email. Please try again later or contact support.',
+        code: 'EMAIL_SEND_FAILED',
+        details: process.env.NODE_ENV === 'development'
+          ? 'SMTP is configured but email delivery failed. Check SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE and provider settings.'
+          : undefined,
+      });
+    }
 
-    res.status(201).json(payload);
+    return res.status(201).json(payload);
   } catch (err) {
     next(err);
   }
@@ -103,31 +147,17 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    if (user.provider && user.provider !== 'local' && !user.password_hash) {
+      return res.status(400).json({ error: 'This account uses social login. Please sign in with Google.', code: 'SOCIAL_LOGIN_REQUIRED' });
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    if (!user.is_verified) {
-      return res.status(403).json({
-        error: 'Please verify your email before signing in. Check your inbox or request a new verification link.',
-        code: 'EMAIL_NOT_VERIFIED',
-        email: user.email,
-      });
-    }
-
-    const token = signToken({ userId: user.id, email: user.email });
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name,
-        avatarUrl: user.avatar_url,
-        roleName: user.role_name,
-        isVerified: user.is_verified,
-      },
-    });
+    const payload = await issueAuthResponse(res, user);
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -252,24 +282,141 @@ export const resendVerification = async (req, res, next) => {
 
 export const refreshToken = async (req, res, next) => {
   try {
-    const user = await userModel.findById(req.user.id);
-    if (!user || !user.is_verified) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+    const rt = req.cookies?.refresh_token;
+    if (!rt) return res.status(401).json({ error: 'Refresh token missing' });
+
+    const record = await refreshTokenModel.findValidByToken(rt);
+    if (!record) return res.status(401).json({ error: 'Invalid or expired refresh token' });
+
+    const user = await userModel.findById(record.user_id);
+    if (!user || !user.is_active) return res.status(401).json({ error: 'Invalid user' });
+
+    // rotate: revoke old, issue new refresh
+    await refreshTokenModel.revoke(record.id);
+
+    const payload = await issueAuthResponse(res, user);
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+    const rt = req.cookies?.refresh_token;
+    if (rt) {
+      const record = await refreshTokenModel.findValidByToken(rt);
+      if (record) await refreshTokenModel.revoke(record.id);
+    }
+    res.clearCookie('refresh_token', { path: '/api/auth' });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const emailRaw = req.body?.email;
+    const email = typeof emailRaw === 'string' ? emailRaw.toLowerCase().trim() : '';
+    const generic = { success: true, message: 'If an account exists for this email, we sent a password reset link.' };
+    if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
+
+    await passwordResetModel.deleteExpired();
+    const user = await userModel.findByEmail(email);
+    if (!user || !user.is_active) return res.json(generic);
+
+    // allow reset for local accounts only
+    if (user.provider && user.provider !== 'local' && !user.password_hash) {
+      return res.json(generic);
     }
 
-    const token = signToken({ userId: user.id, email: user.email });
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name,
-        avatarUrl: user.avatar_url,
-        roleName: user.role_name,
-        isVerified: user.is_verified,
-      },
-    });
+    const token = generateVerificationToken(32);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await passwordResetModel.deleteByUserId(user.id);
+    await passwordResetModel.create({ userId: user.id, token, expiresAt });
+
+    try {
+      await sendPasswordResetEmail({ email: user.email, token, expiresIn: '1 hour' });
+    } catch (e) {
+      console.error('Password reset email failed:', e);
+      return res.status(503).json({ success: false, error: 'Could not send email. Try again later.' });
+    }
+
+    return res.json(generic);
   } catch (err) {
+    next(err);
+  }
+};
+
+export const resetPassword = async (req, res, next) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const newPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!token) return res.status(400).json({ error: 'Reset token is required' });
+    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const record = await passwordResetModel.findByToken(token);
+    if (!record) return res.status(400).json({ error: 'Invalid or expired reset link' });
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await userModel.updatePasswordHash(record.user_id, passwordHash);
+    await passwordResetModel.deleteByToken(token);
+
+    // revoke all refresh tokens (forces re-login everywhere)
+    await refreshTokenModel.revokeByUserId(record.user_id);
+
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const googleLogin = async (req, res, next) => {
+  try {
+    const idToken = typeof req.body?.idToken === 'string' ? req.body.idToken : '';
+    const roleNameRaw = req.body?.roleName;
+    const requestedRoleName = typeof roleNameRaw === 'string' ? roleNameRaw.trim() : '';
+    const payload = await verifyGoogleIdToken(idToken);
+    const email = payload?.email ? String(payload.email).toLowerCase().trim() : '';
+    const emailVerified = !!payload?.email_verified;
+    const sub = payload?.sub ? String(payload.sub) : null;
+    const name = payload?.name ? String(payload.name) : null;
+
+    if (!email || !sub) {
+      return res.status(400).json({ error: 'Invalid Google token payload' });
+    }
+    if (!emailVerified) {
+      return res.status(403).json({ error: 'Google account email is not verified' });
+    }
+
+    let user = await userModel.findByProviderId('google', sub);
+    if (!user) {
+      const existingByEmail = await userModel.findByEmail(email);
+      if (existingByEmail) {
+        user = await userModel.linkGoogleProvider(existingByEmail.id, sub);
+      } else {
+        // Role for social signup:
+        // - If provided, validate it (supports Register page role selection).
+        // - Otherwise default to student.
+        const roleToUse = requestedRoleName || 'student';
+        const role = await roleModel.findByName(roleToUse);
+        if (!role) {
+          return res.status(400).json({ error: 'Invalid role', code: 'INVALID_ROLE' });
+        }
+        user = await userModel.createGoogleUser({
+          email,
+          roleId: role.id,
+          providerId: sub,
+          displayName: name,
+        });
+      }
+    }
+
+    const resp = await issueAuthResponse(res, user);
+    res.json(resp);
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 };

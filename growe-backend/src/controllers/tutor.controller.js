@@ -123,6 +123,23 @@ export const getAvailableSlots = async (req, res, next) => {
   }
 };
 
+export const getAvailableTutorsByDate = async (req, res, next) => {
+  try {
+    const { date, groupId } = req.query;
+    const tutors = await availabilityService.getAvailableTutorsByDate({
+      date,
+      groupId,
+      userId: req.user.id,
+    });
+    res.json(tutors);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+};
+
 export const listTutors = async (req, res, next) => {
   try {
     const tutors = await tutorModel.listTutorProfiles({

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
+import api from '../../services/api';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -121,6 +123,34 @@ export default function Register() {
           <Button type="submit" className="w-full" loading={loading} disabled={loading}>
             Register
           </Button>
+          <div className="flex items-center gap-3">
+            <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1" />
+            <span className="text-xs text-slate-500 dark:text-slate-400">or</span>
+            <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1" />
+          </div>
+          <div className="flex justify-center">
+            {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
+              <GoogleLogin
+                onSuccess={async (cred) => {
+                  try {
+                    const { data } = await api.post('/auth/google', { idToken: cred.credential, roleName });
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
+                    toast.success('Welcome to GROWE!');
+                    navigate('/', { replace: true });
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || 'Google sign up failed');
+                  }
+                }}
+                onError={() => toast.error('Google sign up failed')}
+              />
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+                Google sign-up is not configured. Set <span className="font-mono">VITE_GOOGLE_CLIENT_ID</span> and restart the frontend.
+              </p>
+            )}
+          </div>
           <p className="text-center text-sm text-slate-600 dark:text-slate-400">
             Already have an account?{' '}
             <Link to="/login" className="text-slate-800 dark:text-slate-200 font-medium hover:underline">

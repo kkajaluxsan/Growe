@@ -33,7 +33,7 @@ npm run seed
 npm run dev
 ```
 
-Backend default: http://localhost:5000 (or `PORT` from `.env`).
+Backend default: http://localhost:5001 (or `PORT` from `.env`).
 
 ### 3. Frontend
 
@@ -48,6 +48,41 @@ Frontend: http://localhost:5173. Set Vite proxy target to your backend port if d
 ### 4. Default Admin
 
 After seeds: **admin@growe.edu** / **admin123**
+
+## Auth: Email verification + Google sign-in
+
+### Email verification (SMTP)
+
+Set these in `growe-backend/.env`:
+
+- `FRONTEND_URL=http://localhost:5173`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM`
+- Optional: `VERIFICATION_TOKEN_EXPIRY_MINUTES=60` (15–1440)
+
+Notes:
+
+- In **development**, registration returns success even if SMTP is not configured; however, if `SMTP_USER` is set (or `FORCE_EMAIL_VERIFICATION=1`), registration will fail with `503` when email sending fails.
+- If you request a new verification email, older links become invalid.
+
+### Google sign-in / sign-up
+
+You must configure **both** frontend and backend to use the same Google OAuth Client ID.
+
+Frontend (`growe-frontend/.env`):
+
+- `VITE_GOOGLE_CLIENT_ID=...`
+
+Backend (`growe-backend/.env`):
+
+- `GOOGLE_CLIENT_ID=...`
+
+If Google shows **“Access Denied”**:
+
+- In Google Cloud Console → OAuth consent screen:
+  - If the app is in **Testing**, add your Google account email under **Test users**.
+- In Google Cloud Console → Credentials → your OAuth 2.0 Client:
+  - Add **Authorized JavaScript origins** for your dev URL(s), e.g. `http://localhost:5173` and `http://127.0.0.1:5173`.
+- Make sure the `clientId` used by the frontend matches `GOOGLE_CLIENT_ID` on the backend (ID token audience must match).
 
 ## Production
 
@@ -87,4 +122,3 @@ Requires `growe-backend/.env` and a running PostgreSQL (or use a `db` service in
 - **Booking:** Transactional overlap checks, indexes for performance
 - **Meetings:** WebRTC mesh + Socket.IO signaling; admin force-terminate
 - **Audit:** Admin actions logged to `audit_log`
->>>>>>> d31f3dd (Add .gitignore and remove node_modules from tracking)

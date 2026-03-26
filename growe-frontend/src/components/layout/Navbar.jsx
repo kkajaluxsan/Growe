@@ -21,6 +21,9 @@ export default function Navbar() {
             <Link to="/groups" className="hover:text-slate-300">Groups</Link>
             <Link to="/assignments" className="hover:text-slate-300">Assignments</Link>
             <Link to="/tutors" className="hover:text-slate-300">Tutors</Link>
+            {user.roleName === 'tutor' && (
+              <Link to="/my-availability" className="hover:text-slate-300">My Availability</Link>
+            )}
             <Link to="/meetings" className="hover:text-slate-300">Meetings</Link>
             {user.roleName === 'admin' && (
               <Link to="/admin" className="hover:text-slate-300">Admin</Link>

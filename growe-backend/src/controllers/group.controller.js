@@ -1,6 +1,8 @@
 import * as groupModel from '../models/group.model.js';
 import * as meetingModel from '../models/meeting.model.js';
 import * as meetingService from '../services/meeting.service.js';
+import * as groupInviteModel from '../models/groupInvite.model.js';
+import { generateVerificationToken } from '../utils/generateToken.js';
 
 export const create = async (req, res, next) => {
   try {
@@ -80,6 +82,10 @@ export const requestJoin = async (req, res, next) => {
     }
     const existing = await groupModel.getMember(req.params.id, req.user.id);
     if (existing) {
+      if (existing.status === 'rejected') {
+        await groupModel.addMember(req.params.id, req.user.id, 'pending');
+        return res.status(201).json({ message: 'Join request sent' });
+      }
       return res.status(409).json({ error: 'Already a member or pending' });
     }
     const count = await groupModel.countApprovedMembers(req.params.id);
@@ -105,6 +111,18 @@ export const approveJoin = async (req, res, next) => {
   }
 };
 
+export const rejectJoin = async (req, res, next) => {
+  try {
+    const member = await groupModel.rejectMember(req.params.id, req.params.userId);
+    if (!member) {
+      return res.status(404).json({ error: 'Pending request not found' });
+    }
+    res.json(member);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const listMembers = async (req, res, next) => {
   try {
     const member = await groupModel.getMember(req.params.id, req.user.id);
@@ -113,6 +131,109 @@ export const listMembers = async (req, res, next) => {
     }
     const members = await groupModel.listMembers(req.params.id);
     res.json(members);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const createInviteLink = async (req, res, next) => {
+  try {
+    const group = await groupModel.findById(req.params.id);
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const token = generateVerificationToken(24);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invite = await groupInviteModel.create({
+      groupId: req.params.id,
+      createdBy: req.user.id,
+      token,
+      expiresAt,
+      maxUses: 0,
+    });
+
+    const frontend = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const inviteUrl = `${frontend}/groups/join?token=${encodeURIComponent(token)}`;
+
+    res.status(201).json({
+      inviteId: invite.id,
+      groupId: invite.group_id,
+      expiresAt: invite.expires_at,
+      inviteUrl,
+      token,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const joinByInviteToken = async (req, res, next) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ error: 'Invite token is required' });
+    }
+
+    const invite = await groupInviteModel.findValidByToken(token);
+    if (!invite) {
+      return res.status(400).json({ error: 'Invalid or expired invite link' });
+    }
+
+    const group = await groupModel.findById(invite.group_id);
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const count = await groupModel.countApprovedMembers(invite.group_id);
+    if (count >= group.max_members) {
+      return res.status(400).json({ error: 'Group is full' });
+    }
+
+    const existing = await groupModel.getMember(invite.group_id, req.user.id);
+    if (existing?.status === 'approved') {
+      return res.json({ message: 'Already a member', groupId: invite.group_id });
+    }
+
+    await groupModel.addMember(invite.group_id, req.user.id, 'approved');
+    await groupInviteModel.incrementUse(invite.id);
+
+    res.status(201).json({ message: 'Joined group', groupId: invite.group_id });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const searchUsersToAdd = async (req, res, next) => {
+  try {
+    const q = typeof req.query?.q === 'string' ? req.query.q : '';
+    if (!q.trim()) return res.json([]);
+    const users = await groupModel.searchUsersNotInGroup(req.params.id, q, {
+      limit: Math.min(parseInt(req.query.limit, 10) || 10, 25),
+      offset: parseInt(req.query.offset, 10) || 0,
+    });
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const addMemberBySearch = async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    const group = await groupModel.findById(req.params.id);
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+    const count = await groupModel.countApprovedMembers(req.params.id);
+    if (count >= group.max_members) {
+      return res.status(400).json({ error: 'Group is full' });
+    }
+    const member = await groupModel.addMember(req.params.id, userId, 'approved');
+    res.status(201).json(member);
   } catch (err) {
     next(err);
   }

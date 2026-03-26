@@ -40,12 +40,14 @@ export const listByGroup = async (groupId) => {
 
 export const listByUser = async (userId) => {
   const { rows } = await query(
-    `SELECT DISTINCT m.id, m.group_id, m.title, m.started_at, m.ended_at,
+    `SELECT m.id, m.group_id, m.title, m.started_at, m.ended_at,
             m.created_by, m.created_at, m.scheduled_at, sg.name as group_name
      FROM meetings m
      JOIN study_groups sg ON m.group_id = sg.id
-     JOIN group_members gm ON sg.id = gm.group_id
-     WHERE gm.user_id = $1 AND gm.status = 'approved'
+     WHERE EXISTS (
+       SELECT 1 FROM group_members gm
+       WHERE gm.group_id = sg.id AND gm.user_id = $1 AND gm.status = 'approved'
+     )
      ORDER BY COALESCE(m.scheduled_at, m.created_at) DESC`,
     [userId]
   );
@@ -54,12 +56,14 @@ export const listByUser = async (userId) => {
 
 export const listByUserInRange = async (userId, fromDate, toDate) => {
   const { rows } = await query(
-    `SELECT DISTINCT m.id, m.group_id, m.title, m.started_at, m.ended_at,
+    `SELECT m.id, m.group_id, m.title, m.started_at, m.ended_at,
             m.created_by, m.created_at, m.scheduled_at, sg.name as group_name
      FROM meetings m
      JOIN study_groups sg ON m.group_id = sg.id
-     JOIN group_members gm ON sg.id = gm.group_id
-     WHERE gm.user_id = $1 AND gm.status = 'approved'
+     WHERE EXISTS (
+       SELECT 1 FROM group_members gm
+       WHERE gm.group_id = sg.id AND gm.user_id = $1 AND gm.status = 'approved'
+     )
        AND (
          (m.scheduled_at IS NOT NULL AND m.scheduled_at >= $2::timestamptz AND m.scheduled_at < ($3::date + INTERVAL '1 day')::timestamptz)
          OR (m.scheduled_at IS NULL AND m.created_at::date >= $2::date AND m.created_at::date <= $3::date)
@@ -79,6 +83,16 @@ export const addParticipant = async (meetingId, userId) => {
     [meetingId, userId]
   );
   return rows[0];
+};
+
+export const markStartedIfNeeded = async (meetingId) => {
+  const { rowCount } = await query(
+    `UPDATE meetings
+     SET started_at = COALESCE(started_at, NOW()), updated_at = NOW()
+     WHERE id = $1 AND ended_at IS NULL`,
+    [meetingId]
+  );
+  return rowCount > 0;
 };
 
 export const setParticipantLeft = async (meetingId, userId) => {

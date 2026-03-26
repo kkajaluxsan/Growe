@@ -2,18 +2,50 @@ import { query } from '../config/db.js';
 
 export const create = async ({ email, passwordHash, roleId }) => {
   const { rows } = await query(
-    `INSERT INTO users (email, password_hash, role_id)
-     VALUES ($1, $2, $3)
-     RETURNING id, email, role_id, is_verified, is_active, created_at, updated_at`,
-    [email, passwordHash, roleId]
+    `INSERT INTO users (email, password_hash, role_id, provider)
+     VALUES ($1, $2, $3, 'local')
+     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, created_at, updated_at`,
+    [email, passwordHash || null, roleId]
   );
   return rows[0];
+};
+
+export const createGoogleUser = async ({ email, roleId, providerId, displayName }) => {
+  const { rows } = await query(
+    `INSERT INTO users (email, password_hash, role_id, is_verified, provider, provider_id, display_name, name)
+     VALUES ($1, NULL, $2, true, 'google', $3, $4, $4)
+     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, display_name, avatar_url, created_at, updated_at`,
+    [email, roleId, providerId, displayName || null]
+  );
+  return rows[0];
+};
+
+export const linkGoogleProvider = async (userId, providerId) => {
+  const { rows } = await query(
+    `UPDATE users SET provider = 'google', provider_id = $1, is_verified = true, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, display_name, avatar_url, created_at, updated_at`,
+    [providerId, userId]
+  );
+  return rows[0] || null;
+};
+
+export const findByProviderId = async (provider, providerId) => {
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.password_hash, u.role_id, u.is_verified, u.is_active,
+            u.display_name, u.avatar_url, u.provider, u.provider_id, u.created_at, u.updated_at, r.name as role_name
+     FROM users u
+     JOIN roles r ON u.role_id = r.id
+     WHERE u.provider = $1 AND u.provider_id = $2`,
+    [provider, providerId]
+  );
+  return rows[0] || null;
 };
 
 export const findByEmail = async (email) => {
   const { rows } = await query(
     `SELECT u.id, u.email, u.password_hash, u.role_id, u.is_verified, u.is_active,
-            u.display_name, u.avatar_url, u.created_at, u.updated_at, r.name as role_name
+            u.display_name, u.avatar_url, u.provider, u.provider_id, u.created_at, u.updated_at, r.name as role_name
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.email = $1`,
@@ -25,11 +57,21 @@ export const findByEmail = async (email) => {
 export const findById = async (id) => {
   const { rows } = await query(
     `SELECT u.id, u.email, u.role_id, u.is_verified, u.is_active,
-            u.display_name, u.avatar_url, u.created_at, u.updated_at, r.name as role_name
+            u.display_name, u.avatar_url, u.provider, u.provider_id, u.created_at, u.updated_at, r.name as role_name
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.id = $1`,
     [id]
+  );
+  return rows[0] || null;
+};
+
+export const updatePasswordHash = async (userId, passwordHash) => {
+  const { rows } = await query(
+    `UPDATE users SET password_hash = $1, provider = 'local', provider_id = NULL, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, created_at, updated_at`,
+    [passwordHash, userId]
   );
   return rows[0] || null;
 };

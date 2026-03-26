@@ -6,11 +6,13 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import ShareButton from '../../components/ui/ShareButton';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function GroupDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [group, setGroup] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,10 +23,16 @@ export default function GroupDetail() {
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   });
-  const [slots, setSlots] = useState([]);
+  const [availableTutors, setAvailableTutors] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openingGroupChat, setOpeningGroupChat] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState('');
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberResults, setMemberResults] = useState([]);
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
+  const [addingMemberId, setAddingMemberId] = useState(null);
 
   useEffect(() => {
     api.get(`/groups/${id}`)
@@ -37,21 +45,85 @@ export default function GroupDetail() {
     if (group) {
       api.get(`/groups/${id}/members`)
         .then(({ data }) => setMembers(data))
-        .catch(() => {});
+        .catch((err) => toast.error(err.response?.data?.error || 'Failed to load group members'));
     }
-  }, [group, id]);
+  }, [group, id, toast]);
+
+  const refreshMembers = useCallback(() => {
+    api.get(`/groups/${id}/members`)
+      .then(({ data }) => setMembers(data))
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load group members'));
+  }, [id, toast]);
 
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
-    setSlots([]);
-    api.get('/tutors/slots', { params: { fromDate: scheduleDate, toDate: scheduleDate } })
-      .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
+    setAvailableTutors([]);
+    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id } })
+      .then(({ data }) => setAvailableTutors(Array.isArray(data) ? data : []))
       .catch(() => {
-        setSlots([]);
+        setAvailableTutors([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [scheduleDate, toast]);
+  }, [scheduleDate, toast, id]);
+
+  const isCreator = !!group && !!user && group.creator_id === user.id;
+
+  const handleApprove = (userId) => {
+    api.post(`/groups/${id}/approve/${userId}`)
+      .then(() => {
+        toast.success('Request approved');
+        refreshMembers();
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to approve'));
+  };
+
+  const handleReject = (userId) => {
+    api.post(`/groups/${id}/reject/${userId}`)
+      .then(() => {
+        toast.success('Request rejected');
+        refreshMembers();
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to reject'));
+  };
+
+  const handleCreateInvite = () => {
+    setCreatingInvite(true);
+    setInviteUrl('');
+    api.post(`/groups/${id}/invite-link`)
+      .then(({ data }) => {
+        setInviteUrl(data.inviteUrl || '');
+        toast.success('Invite link created');
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to create invite link'))
+      .finally(() => setCreatingInvite(false));
+  };
+
+  const handleMemberSearch = () => {
+    const q = memberSearch.trim();
+    if (!q) {
+      setMemberResults([]);
+      return;
+    }
+    setMemberSearchLoading(true);
+    api.get(`/groups/${id}/member-search`, { params: { q, limit: 10 } })
+      .then(({ data }) => setMemberResults(Array.isArray(data) ? data : []))
+      .catch(() => setMemberResults([]))
+      .finally(() => setMemberSearchLoading(false));
+  };
+
+  const handleAddMember = (userId) => {
+    setAddingMemberId(userId);
+    api.post(`/groups/${id}/members`, { userId })
+      .then(() => {
+        toast.success('Member added');
+        setMemberResults([]);
+        setMemberSearch('');
+        refreshMembers();
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Failed to add member'))
+      .finally(() => setAddingMemberId(null));
+  };
 
   const handleRequestJoin = () => {
     api.post(`/groups/${id}/join-request`)
@@ -91,17 +163,17 @@ export default function GroupDetail() {
       .finally(() => setOpeningGroupChat(false));
   };
 
-  const handleScheduleWithTutor = (slot) => {
+  const handleScheduleWithTutor = (tutor, slot) => {
     setCreating(true);
     api.post('/meetings', {
       groupId: id,
-      title: `Group Meeting with ${slot.tutorEmail}`,
-      scheduledAt: slot.start,
-      tutorId: slot.tutorId,
+      title: `Group Meeting with ${tutor.email}`,
+      scheduledAt: slot.startTime,
+      tutorId: tutor.tutorId,
       slot: {
         availabilityId: slot.availabilityId,
-        startTime: slot.start,
-        endTime: slot.end,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
       },
     })
       .then(({ data }) => {
@@ -135,22 +207,82 @@ export default function GroupDetail() {
       {error && <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</div>}
       <p className="text-slate-600 dark:text-slate-400 mb-6">{group.description || 'No description'}</p>
       <div className="flex flex-wrap gap-3 mb-6">
-        <Button onClick={handleRequestJoin}>Request to Join</Button>
+        {isCreator && (
+          <>
+            <Button variant="secondary" onClick={handleCreateInvite} disabled={creatingInvite}>
+              {creatingInvite ? 'Creating invite…' : 'Create invite link'}
+            </Button>
+            {inviteUrl && (
+              <ShareButton
+                title={`Join ${group.name}`}
+                shareText={`Join "${group.name}" on GROWE`}
+                url={inviteUrl}
+                variant="secondary"
+              />
+            )}
+          </>
+        )}
         <Button variant="secondary" onClick={handleOpenGroupChat} disabled={openingGroupChat}>
           {openingGroupChat ? 'Opening…' : 'Group chat'}
         </Button>
         <Button variant="secondary" onClick={handleCreateMeeting}>Start Meeting Now</Button>
-        <Button variant="secondary" onClick={() => { setScheduleModalOpen(true); setSlots([]); }}>
+        <Button variant="secondary" onClick={() => { setScheduleModalOpen(true); setAvailableTutors([]); }}>
           Schedule Meeting with Tutor
         </Button>
       </div>
+
+      {isCreator && (
+        <Card className="mb-6">
+          <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Add member</h2>
+          <div className="flex flex-wrap gap-2 items-end">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Search users</label>
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                placeholder="Email or display name"
+                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 w-72"
+              />
+            </div>
+            <Button variant="secondary" onClick={handleMemberSearch} disabled={memberSearchLoading}>
+              {memberSearchLoading ? 'Searching…' : 'Search'}
+            </Button>
+          </div>
+          {memberResults.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {memberResults.map((u) => (
+                <div key={u.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="text-sm">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{u.email}</div>
+                    {u.display_name && <div className="text-slate-500 dark:text-slate-400">{u.display_name}</div>}
+                  </div>
+                  <Button size="sm" onClick={() => handleAddMember(u.id)} disabled={addingMemberId === u.id}>
+                    {addingMemberId === u.id ? 'Adding…' : 'Add'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Members ({members.length})</h2>
       <ul className="space-y-2">
         {members.map((m) => (
           <li key={m.id} className="flex justify-between text-slate-700 dark:text-slate-300">
-            <span>{m.email}</span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">{m.status}</span>
+            <span className="flex items-center gap-2">
+              <span>{m.email}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">({m.status})</span>
+            </span>
+            {isCreator && m.status === 'pending' ? (
+              <span className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => handleApprove(m.user_id)}>Approve</Button>
+                <Button size="sm" variant="danger" onClick={() => handleReject(m.user_id)}>Reject</Button>
+              </span>
+            ) : (
+              <span className="text-sm text-slate-500 dark:text-slate-400">{m.status}</span>
+            )}
           </li>
         ))}
       </ul>
@@ -174,23 +306,35 @@ export default function GroupDetail() {
             {slotsLoading ? 'Loading...' : 'Show available tutors'}
           </Button>
         </div>
-        {slots.length === 0 && !slotsLoading && (
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Select a date and click &quot;Show available tutors&quot; to see slots.</p>
+        {availableTutors.length === 0 && !slotsLoading && (
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Select a date and click &quot;Show available tutors&quot;. If no tutors appear, none are available on that date.
+          </p>
         )}
-        {slots.length > 0 && (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {slots.map((s, i) => (
-              <div
-                key={`${s.availabilityId}-${s.start}-${i}`}
-                className="flex justify-between items-center p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-              >
-                <span className="text-sm">
-                  <span className="font-medium text-slate-900 dark:text-slate-100">{s.tutorEmail}</span>
-                  <span className="text-slate-500 dark:text-slate-400"> — {new Date(s.start).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
-                </span>
-                <Button size="sm" onClick={() => handleScheduleWithTutor(s)} disabled={creating}>
-                  Select
-                </Button>
+        {availableTutors.length > 0 && (
+          <div className="space-y-3 max-h-72 overflow-y-auto">
+            {availableTutors.map((t) => (
+              <div key={t.tutorId} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                <div className="flex flex-col gap-1 mb-2">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">{t.email}</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">{t.bio || 'No bio'}</div>
+                </div>
+                {Array.isArray(t.slots) && t.slots.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {t.slots.map((s, i) => (
+                      <div key={`${s.availabilityId}-${s.startTime}-${i}`} className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-slate-700 dark:text-slate-300">
+                          {new Date(s.startTime).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                        <Button size="sm" onClick={() => handleScheduleWithTutor(t, s)} disabled={creating}>
+                          Select
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 dark:text-slate-400">No open slots for this tutor on this date.</div>
+                )}
               </div>
             ))}
           </div>
