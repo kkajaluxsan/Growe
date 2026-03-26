@@ -1,180 +1,264 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import Card from '../../components/ui/Card';
+import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
+import SlotGrid from '../../components/bookings/SlotGrid';
+import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
+import BookingRejectedModal from '../../components/bookings/BookingRejectedModal';
 
-function getDateRange(days = 14) {
-  const from = new Date();
-  const to = new Date();
-  to.setDate(to.getDate() + days);
-  return {
-    fromDate: from.toISOString().slice(0, 10),
-    toDate: to.toISOString().slice(0, 10),
-  };
+function getTodayPlus(days = 1) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function keyToRange(key) {
+  const [start, end] = String(key || '').split('__');
+  return { start, end };
+}
+
+function formatDateHeading(dateStr) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 export default function TutorList() {
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const [tutors, setTutors] = useState([]);
-  const [slots, setSlots] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [slotsLoading, setSlotsLoading] = useState(true);
-  const [dateRange, setDateRange] = useState(() => getDateRange(14));
 
-  useEffect(() => {
-    api.get('/tutors/list')
-      .then(({ data }) => setTutors(data))
-      .catch(() => toast.error('Failed to load tutors'))
-      .finally(() => setLoading(false));
-  }, [toast]);
+  const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(true);
+
+  const [selectedKey, setSelectedKey] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [rejectedModal, setRejectedModal] = useState({ open: false, booking: null });
+  const lastNotifiedRef = useRef({ confirmed: new Set(), rejected: new Set() });
 
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
-    api.get('/tutors/slots', { params: dateRange })
+    setSlots([]);
+    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate } })
       .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
       .catch(() => {
         setSlots([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [dateRange, toast]);
+  }, [selectedDate, toast]);
+
+  const fetchBookings = useCallback(() => {
+    setBookingsLoading(true);
+    api.get('/bookings', { params: { limit: 20, offset: 0 } })
+      .then(({ data }) => setBookings(Array.isArray(data) ? data : []))
+      .catch(() => setBookings([]))
+      .finally(() => setBookingsLoading(false));
+  }, []);
 
   useEffect(() => {
     fetchSlots();
   }, [fetchSlots]);
 
-  if (loading) return <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800" />;
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
+
+  // Lightweight polling so students see accept/decline outcomes promptly.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchBookings();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [fetchBookings]);
+
+  // Notify + guide the student when a booking gets confirmed/rejected.
+  useEffect(() => {
+    const list = Array.isArray(bookings) ? bookings : [];
+
+    const newlyConfirmed = list.filter(
+      (b) => b?.status === 'confirmed' && b?.id && !lastNotifiedRef.current.confirmed.has(b.id)
+    );
+    newlyConfirmed.forEach((b) => {
+      lastNotifiedRef.current.confirmed.add(b.id);
+      toast.success('Your tutoring session has been confirmed.');
+    });
+
+    const newlyRejected = list.filter(
+      (b) => b?.status === 'rejected' && b?.id && !lastNotifiedRef.current.rejected.has(b.id)
+    );
+    if (newlyRejected.length > 0) {
+      const b = newlyRejected[0];
+      lastNotifiedRef.current.rejected.add(b.id);
+      setRejectedModal({ open: true, booking: b });
+    }
+  }, [bookings, toast]);
+
+  const legend = (
+    <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-400">
+      <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-emerald-500/40 border border-emerald-500/60" /> Available</span>
+      <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-slate-300 border border-slate-400 dark:bg-slate-700 dark:border-slate-600" /> Booked</span>
+      <span className="flex items-center gap-2"><span className="h-3 w-3 rounded bg-blue-500/40 border border-blue-500/60" /> Selected</span>
+    </div>
+  );
+
+  const activeBookings = useMemo(
+    () =>
+      (Array.isArray(bookings) ? bookings : []).filter((b) =>
+        ['pending', 'waiting_tutor_confirmation', 'confirmed', 'rejected'].includes(b.status)
+      ),
+    [bookings]
+  );
+
+  const handleSlotClick = (key) => {
+    setSelectedKey(key);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    const { start, end } = keyToRange(selectedKey);
+    if (!start || !end) return;
+    setConfirmOpen(false);
+    navigate('/tutors/select', {
+      state: {
+        selectedDate,
+        startTime: start,
+        endTime: end,
+      },
+    });
+  };
+
+  const openRejected = (booking) => {
+    setRejectedModal({ open: true, booking });
+  };
+
+  const handleRejectedSelectAnotherTutor = () => {
+    const b = rejectedModal.booking;
+    if (!b) return;
+    setRejectedModal({ open: false, booking: null });
+    navigate('/tutors/select', {
+      state: {
+        selectedDate: String(b.available_date || '').slice(0, 10) || new Date(b.start_time).toISOString().slice(0, 10),
+        startTime: b.start_time,
+        endTime: b.end_time,
+      },
+    });
+  };
+
+  const handleRejectedChooseAnotherTime = () => {
+    setRejectedModal({ open: false, booking: null });
+    // stay on slot grid
+  };
 
   return (
     <div className="space-y-6 md:space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Bookings</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Find tutors and reserve a session.</p>
-      </div>
-      <div className="flex flex-col gap-4">
-        {tutors.map((t) => (
-          <Card key={t.id} className="w-full">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100 break-words">{t.email}</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{t.bio || 'No bio'}</p>
-            {t.subjects?.length > 0 && (
-              <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Subjects: {t.subjects.join(', ')}</p>
-            )}
-          </Card>
-        ))}
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+          Choose a time slot first, then select a tutor.
+        </p>
       </div>
 
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Available slots</h2>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={dateRange.fromDate}
-              onChange={(e) => setDateRange((r) => ({ ...r, fromDate: e.target.value }))}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
-            />
-            <span className="text-slate-500">to</span>
-            <input
-              type="date"
-              value={dateRange.toDate}
-              onChange={(e) => setDateRange((r) => ({ ...r, toDate: e.target.value }))}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
-            />
-            <Button size="sm" variant="secondary" onClick={fetchSlots} disabled={slotsLoading}>
-              {slotsLoading ? 'Loading...' : 'Refresh'}
-            </Button>
+      <Card className="p-6">
+        <CardHeader
+          title="Time Slot Selection"
+          subtitle="Pick a slot (theatre-style) and confirm to choose a tutor."
+          action={
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+              />
+              <Button size="sm" variant="secondary" onClick={fetchSlots} disabled={slotsLoading}>
+                {slotsLoading ? 'Loading...' : 'Refresh'}
+              </Button>
+            </div>
+          }
+        />
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            {formatDateHeading(selectedDate)}
           </div>
+          {legend}
         </div>
+
         {slotsLoading ? (
           <div className="text-slate-500 dark:text-slate-400">Loading slots...</div>
-        ) : slots.length === 0 ? (
-          <Card className="py-8 text-center text-slate-600 dark:text-slate-400">
-            No available slots in this range. Tutors can add availability from their dashboard; try a different date range.
-          </Card>
         ) : (
-          <SlotsByTutor slots={slots} onBooked={fetchSlots} toast={toast} />
+          <SlotGrid slots={slots} selectedKey={selectedKey} onSelectKey={handleSlotClick} />
         )}
-      </div>
-    </div>
-  );
-}
-
-function formatSlotTime(start, end) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const dateStr = s.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  const timeStr = `${s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} – ${e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
-  return { dateStr, timeStr };
-}
-
-function SlotsByTutor({ slots, onBooked, toast }) {
-  const byTutor = slots.slice(0, 50).reduce((acc, s) => {
-    const key = s.tutorEmail || 'Unknown';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(s);
-    return acc;
-  }, {});
-
-  return (
-    <div className="space-y-6">
-      {Object.entries(byTutor).map(([email, tutorSlots]) => (
-        <Card key={email} className="overflow-hidden">
-          <div className="pb-2 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate text-sm" title={email}>
-              {email}
-            </h3>
+        {!slotsLoading && slots.length === 0 && (
+          <div className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+            No tutors available on this date. Try another day.
           </div>
-          <div className="pt-3 flex flex-col gap-2">
-            {tutorSlots.map((s, i) => (
-              <SlotChip key={`${s.availabilityId}-${s.start}-${i}`} slot={s} onBooked={onBooked} toast={toast} />
+        )}
+      </Card>
+
+      <Card className="p-6">
+        <CardHeader
+          title="Your bookings"
+          subtitle="Track tutor confirmations and outcomes."
+          action={
+            <Button size="sm" variant="secondary" onClick={fetchBookings} disabled={bookingsLoading}>
+              {bookingsLoading ? 'Loading...' : 'Refresh'}
+            </Button>
+          }
+        />
+        {bookingsLoading ? (
+          <div className="text-slate-500 dark:text-slate-400">Loading your bookings...</div>
+        ) : activeBookings.length === 0 ? (
+          <div className="text-sm text-slate-600 dark:text-slate-400">No active bookings yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {activeBookings.map((b) => (
+              <div
+                key={b.id}
+                className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    Tutor: {b.tutor_email || '—'}
+                  </div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {new Date(b.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold capitalize text-slate-700 dark:text-slate-200">
+                    {b.status === 'waiting_tutor_confirmation' ? 'waiting_tutor_confirmation' : b.status}
+                  </span>
+                  {b.status === 'rejected' && (
+                    <Button size="sm" onClick={() => openRejected(b)}>
+                      Choose next step
+                    </Button>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
-        </Card>
-      ))}
-      {slots.length > 50 && (
-        <p className="text-sm text-slate-500 dark:text-slate-400">Showing first 50 slots. Use date range to see more.</p>
-      )}
-    </div>
-  );
-}
+        )}
+      </Card>
 
-function SlotChip({ slot, onBooked, toast }) {
-  const [booking, setBooking] = useState(false);
-  const [error, setError] = useState('');
-  const { dateStr, timeStr } = formatSlotTime(slot.start, slot.end);
+      <BookingConfirmationModal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirm}
+      />
 
-  const handleBook = () => {
-    setError('');
-    setBooking(true);
-    api.post('/bookings', {
-      availabilityId: slot.availabilityId,
-      startTime: slot.start,
-      endTime: slot.end,
-    })
-      .then(() => {
-        toast.success('Booking requested. Tutor will confirm.');
-        onBooked?.();
-      })
-      .catch((err) => {
-        const msg = err.response?.data?.error || 'Failed to book';
-        setError(msg);
-        toast.error(msg);
-      })
-      .finally(() => setBooking(false));
-  };
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 w-full transition-all duration-200 hover:border-growe/40 hover:shadow-sm">
-      <span className="text-sm text-slate-800 dark:text-slate-200 font-medium">
-        {dateStr} · {timeStr}
-      </span>
-      <div className="flex items-center gap-2 shrink-0">
-        {error && <span className="text-red-600 dark:text-red-400 text-xs max-w-[10rem]">{error}</span>}
-        <Button size="sm" onClick={handleBook} disabled={booking} loading={booking}>
-          Book slot
-        </Button>
-      </div>
+      <BookingRejectedModal
+        open={rejectedModal.open}
+        onClose={() => setRejectedModal({ open: false, booking: null })}
+        onSelectAnotherTutor={handleRejectedSelectAnotherTutor}
+        onChooseAnotherTime={handleRejectedChooseAnotherTime}
+      />
     </div>
   );
 }

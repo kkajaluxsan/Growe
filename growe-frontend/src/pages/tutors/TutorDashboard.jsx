@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import TutorRequestPanel from '../../components/bookings/TutorRequestPanel';
 
 export default function TutorDashboard() {
   const { user } = useAuth();
@@ -269,12 +270,17 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
 }
 
 function TutorBookingsSection({ bookings, onUpdate }) {
+  const [busyId, setBusyId] = useState('');
+
   const handleStatus = async (bookingId, status) => {
     try {
+      setBusyId(bookingId);
       await api.patch(`/bookings/${bookingId}/status`, { status });
       onUpdate();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed');
+    } finally {
+      setBusyId('');
     }
   };
 
@@ -288,8 +294,16 @@ function TutorBookingsSection({ bookings, onUpdate }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 overflow-x-auto">
-      <h2 className="text-lg font-semibold mb-4">My Bookings</h2>
+    <div className="space-y-6">
+      <TutorRequestPanel
+        bookings={bookings}
+        busyId={busyId}
+        onAccept={(b) => handleStatus(b.id, 'confirmed')}
+        onDecline={(b) => handleStatus(b.id, 'rejected')}
+      />
+
+      <div className="bg-white rounded-lg shadow p-6 overflow-x-auto">
+        <h2 className="text-lg font-semibold mb-4">My Bookings</h2>
       <table className="min-w-full">
         <thead>
           <tr className="border-b text-left">
@@ -306,10 +320,10 @@ function TutorBookingsSection({ bookings, onUpdate }) {
               <td className="px-4 py-2">{new Date(b.start_time).toLocaleString()}</td>
               <td className="px-4 py-2 capitalize">{b.status}</td>
               <td className="px-4 py-2">
-                {b.status === 'pending' && (
+                {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
                   <>
                     <button onClick={() => handleStatus(b.id, 'confirmed')} className="text-green-600 hover:underline mr-2">Confirm</button>
-                    <button onClick={() => handleStatus(b.id, 'cancelled')} className="text-red-600 hover:underline">Reject</button>
+                    <button onClick={() => handleStatus(b.id, 'rejected')} className="text-red-600 hover:underline">Decline</button>
                   </>
                 )}
                 {b.status === 'confirmed' && (
@@ -324,6 +338,7 @@ function TutorBookingsSection({ bookings, onUpdate }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
