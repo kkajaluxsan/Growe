@@ -1,6 +1,7 @@
 import * as meetingModel from '../models/meeting.model.js';
 import * as groupModel from '../models/group.model.js';
 import * as bookingService from './booking.service.js';
+import * as notificationService from './notification.service.js';
 
 export const createMeeting = async ({ groupId, title, createdBy, scheduledAt, tutorId, slot }) => {
   const member = await groupModel.getMember(groupId, createdBy);
@@ -17,11 +18,21 @@ export const createMeeting = async ({ groupId, title, createdBy, scheduledAt, tu
       endTime: slot.endTime,
     });
   }
-  return meetingModel.create({
+  const meeting = await meetingModel.create({
     groupId,
     title: title || 'Group Meeting',
     createdBy,
     scheduledAt: scheduledAt || null,
     tutorId: tutorId || null,
   });
+  const group = await groupModel.findById(groupId);
+  Promise.resolve()
+    .then(() =>
+      notificationService.notifyMeetingScheduled({
+        meeting,
+        groupName: group?.name,
+      })
+    )
+    .catch(() => {});
+  return meeting;
 };

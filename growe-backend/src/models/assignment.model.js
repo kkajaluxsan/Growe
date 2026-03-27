@@ -122,3 +122,27 @@ export const softDeleteById = async (id) => {
   );
   return rowCount > 0;
 };
+
+/** Due within [from, to], not completed, no reminder yet (for hourly job). */
+export const listDueForDeadlineReminder = async (fromIso, toIso) => {
+  const { rows } = await query(
+    `SELECT a.id, a.user_id, a.title, a.deadline, u.email, u.display_name
+     FROM assignments a
+     JOIN users u ON a.user_id = u.id
+     WHERE a.deleted_at IS NULL
+       AND a.status <> 'completed'
+       AND a.deadline_reminder_sent_at IS NULL
+       AND a.deadline >= $1::timestamptz
+       AND a.deadline <= $2::timestamptz`,
+    [fromIso, toIso]
+  );
+  return rows;
+};
+
+export const markDeadlineReminderSent = async (id) => {
+  const { rowCount } = await query(
+    `UPDATE assignments SET deadline_reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
+    [id]
+  );
+  return rowCount > 0;
+};

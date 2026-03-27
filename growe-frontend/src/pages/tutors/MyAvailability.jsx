@@ -21,7 +21,9 @@ export default function MyAvailability() {
     setLoading(true);
     api.get('/tutors/availability')
       .then(({ data }) => setAvailability(Array.isArray(data) ? data : []))
-      .catch(() => setAvailability([]))
+      .catch(() => {
+        setAvailability([]);
+      })
       .finally(() => setLoading(false));
   };
 

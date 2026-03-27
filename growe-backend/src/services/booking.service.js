@@ -1,6 +1,7 @@
 import { transaction } from '../config/db.js';
 import * as tutorModel from '../models/tutor.model.js';
 import * as bookingModel from '../models/booking.model.js';
+import * as notificationService from './notification.service.js';
 import { doTimesOverlap, isPast } from '../utils/timeUtils.js';
 import { generateSlots } from '../utils/slotGenerator.js';
 
@@ -112,6 +113,14 @@ export const createBooking = async ({ availabilityId, studentId, startTime, endT
       [availabilityId, studentId, startTime, endTime]
     );
     return rows[0];
+  }).then(async (booking) => {
+    const full = await bookingModel.findById(booking.id);
+    if (full) {
+      Promise.resolve()
+        .then(() => notificationService.notifyBookingCreated(full))
+        .catch(() => {});
+    }
+    return booking;
   });
 };
 
@@ -153,5 +162,11 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
 
   const reliabilityScore = newStatus === 'completed' ? 1.0 : newStatus === 'no_show' ? 0 : null;
   const updated = await bookingModel.updateStatus(bookingId, newStatus, reliabilityScore);
+  const full = await bookingModel.findById(bookingId);
+  if (full) {
+    Promise.resolve()
+      .then(() => notificationService.notifyBookingStatusChanged(full, newStatus))
+      .catch(() => {});
+  }
   return updated;
 };

@@ -9,8 +9,15 @@ export default function ShareButton({ title = 'Share', shareText, url, variant =
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const fullUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
   const text = shareText || title;
+  const fullUrl = (() => {
+    const u = url || (typeof window !== 'undefined' ? window.location.href : '');
+    if (typeof window === 'undefined') return u;
+    if (!u) return window.location.href;
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith('/')) return `${window.location.origin}${u}`;
+    return u;
+  })();
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +40,17 @@ export default function ShareButton({ title = 'Share', shareText, url, variant =
       setOpen(false);
     } catch {
       toast.error('Could not copy link');
+    }
+  };
+
+  const handleCopyMessageAndLink = async () => {
+    const body = `${text}\n\n${fullUrl}`;
+    try {
+      await navigator.clipboard.writeText(body);
+      toast.success('Message and link copied — paste in chat; the URL should be tappable');
+      setOpen(false);
+    } catch {
+      toast.error('Could not copy');
     }
   };
 
@@ -135,6 +153,17 @@ export default function ShareButton({ title = 'Share', shareText, url, variant =
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
             Copy link
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyMessageAndLink}
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+            role="menuitem"
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2M8 5a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2" />
+            </svg>
+            Copy message + link
           </button>
           {typeof navigator !== 'undefined' && navigator.share && (
             <button

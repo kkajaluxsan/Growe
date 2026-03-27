@@ -86,7 +86,7 @@ export const addParticipant = async (conversationId, userId) => {
 
 export const getParticipants = async (conversationId) => {
   const { rows } = await query(
-    `SELECT cp.user_id, u.email, u.display_name
+    `SELECT cp.user_id, u.email, u.display_name, cp.last_read_at
      FROM conversation_participants cp
      JOIN users u ON cp.user_id = u.id
      WHERE cp.conversation_id = $1`,
@@ -101,6 +101,17 @@ export const isParticipant = async (conversationId, userId) => {
     [conversationId, userId]
   );
   return rows.length > 0;
+};
+
+/** For DIRECT chats with exactly two participants, returns the other user's id (or null). */
+export const getDirectOtherUserId = async (conversationId, userId) => {
+  const conv = await findById(conversationId);
+  if (!conv || conv.type !== 'DIRECT') return null;
+  if (!(await isParticipant(conversationId, userId))) return null;
+  const participants = await getParticipants(conversationId);
+  if (participants.length !== 2) return null;
+  const other = participants.find((p) => String(p.user_id) !== String(userId));
+  return other?.user_id ?? null;
 };
 
 export const updateLastRead = async (conversationId, userId) => {

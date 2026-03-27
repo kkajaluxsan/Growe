@@ -54,6 +54,10 @@ export default function ForgotPassword() {
             <Button type="submit" className="w-full" loading={loading} disabled={loading}>
               Send reset link
             </Button>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center leading-relaxed">
+              If you registered with Google, use <span className="font-medium">Sign in with Google</span> on the login page
+              instead of a password reset.
+            </p>
             <p className="text-center text-sm text-slate-600 dark:text-slate-400">
               Remembered it?{' '}
               <Link to="/login" className="text-slate-800 dark:text-slate-200 font-medium hover:underline">

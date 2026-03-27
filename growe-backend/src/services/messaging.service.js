@@ -4,10 +4,16 @@ import * as userModel from '../models/user.model.js';
 import * as groupModel from '../models/group.model.js';
 import * as meetingModel from '../models/meeting.model.js';
 import * as tutorModel from '../models/tutor.model.js';
+import { getNotificationIo } from '../config/socketRegistry.js';
 import * as eligibleMessagingModel from '../models/eligibleMessaging.model.js';
 import { sanitizeMessageContent } from '../utils/sanitize.js';
+import { isValidChatAttachmentUrl } from '../utils/chatAttachment.js';
 
 const MAX_MESSAGE_LENGTH = 4000;
+const MAX_ATTACHMENT_BYTES = Math.min(
+  Number(process.env.MESSAGING_MAX_FILE_MB || 25) * 1024 * 1024,
+  50 * 1024 * 1024
+);
 const MIN_MESSAGE_LENGTH = 1;
 
 export const getEligibleMessagingUsers = async (userId, roleName, { search = '', limit = 30 } = {}) => {
@@ -31,7 +37,7 @@ export const getOrCreateDirectConversation = async (userId, otherUserId, roleNam
   const allowed = await eligibleMessagingModel.canMessageUser(userId, otherUserId, isAdmin);
   if (!allowed) {
     const err = new Error(
-      'You can only message users in your study groups, or tutors/students you have a confirmed booking with.'
+      'You can only message active, verified users. Admins may message active users.'
     );
     err.statusCode = 403;
     err.code = 'MESSAGING_NOT_ALLOWED';
@@ -52,14 +58,21 @@ export const getOrCreateGroupConversation = async (userId, groupId) => {
     err.statusCode = 403;
     throw err;
   }
-  let conv = await conversationModel.findByGroupId(groupId);
-  if (conv) return { conversation: await conversationModel.findById(conv.id), created: false };
-  const conversation = await conversationModel.create({ type: 'GROUP', groupId });
   const members = await groupModel.listMembers(groupId);
-  for (const m of members.filter((x) => x.status === 'approved')) {
-    await conversationModel.addParticipant(conversation.id, m.user_id);
+  const approvedIds = members.filter((x) => x.status === 'approved').map((x) => x.user_id);
+  let conv = await conversationModel.findByGroupId(groupId);
+  if (!conv) {
+    const conversation = await conversationModel.create({ type: 'GROUP', groupId });
+    for (const uid of approvedIds) {
+      await conversationModel.addParticipant(conversation.id, uid);
+    }
+    return { conversation: await conversationModel.findById(conversation.id), created: true };
   }
-  return { conversation: await conversationModel.findById(conversation.id), created: true };
+  // Chat may have been created before some members joined; keep participants in sync with approved members.
+  for (const uid of approvedIds) {
+    await conversationModel.addParticipant(conv.id, uid);
+  }
+  return { conversation: await conversationModel.findById(conv.id), created: false };
 };
 
 export const getOrCreateMeetingConversation = async (userId, meetingId) => {
@@ -119,7 +132,10 @@ export const getMessages = async (conversationId, userId, { page = 1, limit = 20
   return messages;
 };
 
-export const sendMessage = async (conversationId, userId, content, messageType = 'TEXT') => {
+/**
+ * @param {object|null} attachment - When set, creates a FILE message (url must be from POST .../attachments).
+ */
+export const sendMessage = async (conversationId, userId, content, messageType = 'TEXT', attachment = null) => {
   const isParticipant = await conversationModel.isParticipant(conversationId, userId);
   if (!isParticipant) {
     const err = new Error('Access denied');
@@ -138,6 +154,47 @@ export const sendMessage = async (conversationId, userId, content, messageType =
     err.statusCode = 403;
     throw err;
   }
+
+  if (attachment && typeof attachment === 'object' && attachment.url) {
+    if (!isValidChatAttachmentUrl(attachment.url)) {
+      const err = new Error('Invalid attachment');
+      err.statusCode = 400;
+      throw err;
+    }
+    const name = String(attachment.name ?? '').trim().slice(0, 512);
+    if (!name) {
+      const err = new Error('Attachment name is required');
+      err.statusCode = 400;
+      throw err;
+    }
+    const mime = String(attachment.mime ?? '').trim().slice(0, 127);
+    const size = Number(attachment.size);
+    if (!Number.isFinite(size) || size < 0 || size > MAX_ATTACHMENT_BYTES) {
+      const err = new Error('Invalid attachment size');
+      err.statusCode = 400;
+      throw err;
+    }
+    const raw = content == null ? '' : String(content);
+    const cap = sanitizeMessageContent(raw);
+    const finalContent = cap.length >= MIN_MESSAGE_LENGTH ? cap : 'Sent a file';
+    if (finalContent.length > MAX_MESSAGE_LENGTH) {
+      const err = new Error(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`);
+      err.statusCode = 400;
+      throw err;
+    }
+    const message = await messageModel.create({
+      conversationId,
+      senderId: userId,
+      content: finalContent,
+      messageType: 'FILE',
+      attachmentUrl: attachment.url,
+      attachmentName: name,
+      attachmentMime: mime || null,
+      attachmentSize: Math.floor(size),
+    });
+    return messageModel.findById(message.id);
+  }
+
   const sanitized = sanitizeMessageContent(content);
   if (sanitized.length < MIN_MESSAGE_LENGTH) {
     const err = new Error('Message content is required');
@@ -164,6 +221,11 @@ export const editMessage = async (messageId, userId, content) => {
   if (!existing) {
     const err = new Error('Message not found');
     err.statusCode = 404;
+    throw err;
+  }
+  if (existing.message_type === 'SYSTEM') {
+    const err = new Error('This message cannot be edited');
+    err.statusCode = 400;
     throw err;
   }
   if (existing.sender_id !== userId) {
@@ -195,6 +257,11 @@ export const deleteMessage = async (messageId, userId) => {
     err.statusCode = 404;
     throw err;
   }
+  if (existing.message_type === 'SYSTEM') {
+    const err = new Error('This message cannot be deleted');
+    err.statusCode = 400;
+    throw err;
+  }
   if (existing.sender_id !== userId) {
     const err = new Error('You can only delete your own messages');
     err.statusCode = 403;
@@ -210,7 +277,16 @@ export const markAsRead = async (conversationId, userId) => {
     err.statusCode = 403;
     throw err;
   }
-  return conversationModel.updateLastRead(conversationId, userId);
+  const row = await conversationModel.updateLastRead(conversationId, userId);
+  const io = getNotificationIo();
+  if (io && row?.last_read_at) {
+    io.to(`conversation-${conversationId}`).emit('conversation-read', {
+      conversationId,
+      userId,
+      readAt: row.last_read_at,
+    });
+  }
+  return row;
 };
 
 export const getUnreadCount = async (conversationId, userId) => {

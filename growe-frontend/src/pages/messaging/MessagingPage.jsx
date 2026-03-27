@@ -52,10 +52,11 @@ export default function MessagingPage() {
         setSelectedConversation((prev) => (prev ? { ...prev, ...data } : null));
         setParticipants(data?.participants || []);
       })
-      .catch(() => {
+      .catch((err) => {
+        toast.error(err.response?.data?.error || 'Failed to load conversation');
         setParticipants([]);
       });
-  }, [selectedConversation?.id]);
+  }, [selectedConversation?.id, toast]);
 
   const handleConversationStarted = useCallback(
     (conversation) => {

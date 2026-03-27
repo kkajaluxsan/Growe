@@ -2,15 +2,32 @@
   "name": "growe-root",
   "private": true,
   "version": "1.0.0",
+  "description": "GROWE monorepo — npm run setup → copy growe-backend/.env.example to .env → npm run migrate → npm run dev (API :5001, UI :5173). See README.md.",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
-    "dev": "(npx kill-port 8000 5001 5173 5174 5175 >NUL 2>&1 || echo Ports already free) && concurrently -k -n \"api,ws,web\" -c \"cyan,magenta,green\" \"php growe-backend-laravel-app/artisan serve --host=127.0.0.1 --port=8000\" \"npm --prefix growe-backend run dev\" \"npm --prefix growe-frontend run dev -- --host 127.0.0.1 --port 5173\"",
-    "dev:api": "php growe-backend-laravel-app/artisan serve --host=127.0.0.1 --port=8000",
-    "dev:ws": "npm --prefix growe-backend run dev",
-    "dev:web": "npm --prefix growe-frontend run dev -- --host 127.0.0.1 --port 5173"
+    "setup": "npm run install:all",
+    "install:all": "npm install && npm install --prefix growe-backend && npm install --prefix growe-frontend",
+    "migrate": "npm run db:migrate",
+    "db:migrate": "npm --prefix growe-backend run migrate",
+    "db:seed": "npm --prefix growe-backend run seed",
+    "dev": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:lan": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev:web:lan\"",
+    "start": "npm run dev",
+    "dev:clean": "npm run dev:kill && npm run dev",
+    "dev:full": "npm run dev:kill && concurrently -k -n \"laravel,api,web\" -c \"yellow,cyan,magenta\" \"npm run dev:laravel\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm --prefix growe-backend run dev",
+    "dev:web": "npm --prefix growe-frontend run dev",
+    "dev:web:lan": "npm --prefix growe-frontend run dev:lan",
+    "dev:laravel": "php growe-backend-laravel-app/artisan serve --host=127.0.0.1 --port=8000",
+    "dev:kill": "kill-port 5000 5001 5173 8000 5174 5175",
+    "dev:backend": "npm run dev:api",
+    "dev:frontend": "npm run dev:web"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "kill-port": "^2.0.1"
   }
 }
-

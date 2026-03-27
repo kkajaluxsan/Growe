@@ -51,20 +51,31 @@ export default function Dashboard() {
     if (!user?.isVerified) return;
     let cancelled = false;
     setStatsLoading(true);
-    Promise.all([
-      api.get('/groups').catch(() => ({ data: [] })),
-      api.get('/bookings').catch(() => ({ data: [] })),
-      api.get('/meetings').catch(() => ({ data: [] })),
+    const silent = { skipGlobalErrorToast: true };
+    Promise.allSettled([
+      api.get('/groups', silent),
+      api.get('/bookings', silent),
+      api.get('/meetings', silent),
     ])
-      .then(([gRes, bRes, mRes]) => {
+      .then((results) => {
         if (cancelled) return;
-        const groups = Array.isArray(gRes.data) ? gRes.data.length : 0;
-        const bookings = Array.isArray(bRes.data)
-          ? bRes.data.filter((b) => b.status && ['pending', 'waiting_tutor_confirmation', 'confirmed'].includes(b.status)).length
+        const anyFailed = results.some((r) => r.status === 'rejected');
+        if (anyFailed) {
+          toast.error('Some dashboard data could not be loaded. Try refreshing.');
+        }
+        const gRes = results[0].status === 'fulfilled' ? results[0].value : null;
+        const bRes = results[1].status === 'fulfilled' ? results[1].value : null;
+        const mRes = results[2].status === 'fulfilled' ? results[2].value : null;
+        const gData = gRes?.data;
+        const bData = bRes?.data;
+        const mData = mRes?.data;
+        const groups = Array.isArray(gData) ? gData.length : 0;
+        const bookings = Array.isArray(bData)
+          ? bData.filter((b) => b.status && ['pending', 'waiting_tutor_confirmation', 'confirmed'].includes(b.status)).length
           : 0;
         const now = Date.now();
-        const meetings = Array.isArray(mRes.data)
-          ? mRes.data.filter((m) => {
+        const meetings = Array.isArray(mData)
+          ? mData.filter((m) => {
               if (m.ended_at) return false;
               if (!m.scheduled_at) return false;
               return new Date(m.scheduled_at).getTime() >= now;
@@ -78,7 +89,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.isVerified]);
+  }, [user?.isVerified, toast]);
 
   const dismissOnboarding = () => {
     localStorage.setItem(ONBOARDING_KEY, '1');
@@ -104,15 +115,22 @@ export default function Dashboard() {
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
           <p className="font-semibold text-amber-800 dark:text-amber-200">Verify your email</p>
           <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Check your inbox for the verification link. Some features are limited until verified.</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            loading={resending}
-            onClick={handleResendVerification}
-          >
-            Resend verification email
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={resending}
+              onClick={handleResendVerification}
+            >
+              Resend verification email
+            </Button>
+            <Link
+              to={user?.email ? `/verify-email?email=${encodeURIComponent(user.email)}` : '/verify-email'}
+              className="inline-flex items-center justify-center font-medium rounded-2xl shadow-sm bg-slate-100 text-slate-800 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500 px-3 py-1.5 text-sm"
+            >
+              Open verification page
+            </Link>
+          </div>
         </Card>
       </div>
     );

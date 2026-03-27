@@ -26,20 +26,26 @@ export default function TutorDashboard() {
     setLoading(true);
     api.get('/tutors/profile')
       .then(({ data }) => setProfile(data))
-      .catch(() => setProfile(null))
+      .catch(() => {
+        setProfile(null);
+      })
       .finally(() => setLoading(false));
   };
 
   const loadAvailability = () => {
     api.get('/tutors/availability')
       .then(({ data }) => setAvailability(data))
-      .catch(() => setAvailability([]));
+      .catch(() => {
+        setAvailability([]);
+      });
   };
 
   const loadBookings = () => {
     api.get('/bookings')
       .then(({ data }) => setBookings(data))
-      .catch(() => setBookings([]));
+      .catch(() => {
+        setBookings([]);
+      });
   };
 
   if (loading) {

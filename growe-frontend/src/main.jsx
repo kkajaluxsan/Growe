@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import { SocketProvider } from './context/SocketContext';
+import { DirectCallProvider } from './context/DirectCallContext';
 import './index.css';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -15,7 +16,9 @@ const RootProviders = ({ children }) => (
   <AuthProvider>
     <ThemeProvider>
       <ToastProvider>
-        <SocketProvider>{children}</SocketProvider>
+        <SocketProvider>
+          <DirectCallProvider>{children}</DirectCallProvider>
+        </SocketProvider>
       </ToastProvider>
     </ThemeProvider>
   </AuthProvider>
