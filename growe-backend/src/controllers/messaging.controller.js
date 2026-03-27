@@ -108,6 +108,25 @@ export const sendMessage = async (req, res, next) => {
   }
 };
 
+export const uploadAttachment = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    await messagingService.getConversationById(req.params.id, req.user.id);
+    const url = `/uploads/messaging/${req.file.filename}`;
+    res.status(201).json({
+      url,
+      name: req.file.originalname || req.file.filename,
+      mime: req.file.mimetype,
+      size: req.file.size,
+    });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+};
+
 export const getUnreadCount = async (req, res, next) => {
   try {
     const count = await messagingService.getUnreadCount(req.params.id, req.user.id);

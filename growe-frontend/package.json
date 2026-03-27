@@ -3,10 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "GROWE UI — Vite dev server; proxies /api and /socket.io to localhost:5001. Optional .env from .env.example.",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev:lan": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest"
   },

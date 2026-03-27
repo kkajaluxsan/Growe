@@ -34,10 +34,12 @@ let refreshPromise = null;
 
 function emitApiError(err) {
   try {
+    if (err?.config?.skipGlobalErrorToast) return;
     const status = err?.response?.status;
     const data = err?.response?.data;
     const message =
       data?.error ||
+      data?.message ||
       (Array.isArray(data?.details) ? data.details.join(', ') : null) ||
       err?.message ||
       'Request failed';
@@ -46,7 +48,14 @@ function emitApiError(err) {
 }
 
 nodeApi.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const d = response.data;
+    if (d && typeof d === 'object' && d.success === true && Object.prototype.hasOwnProperty.call(d, 'data')) {
+      response.data = d.data;
+      response._apiMessage = d.message;
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     if (error.response?.status === 403 && error.response?.data?.error?.toLowerCase?.().includes('csrf')) {

@@ -37,6 +37,8 @@ export const initSignaling = (httpServer) => {
   const meetingUserSocket = new Map(); // meetingId -> Map(userId -> { socketId, email })
 
   io.on('connection', (socket) => {
+    socket.join(`user-${socket.userId}`);
+
     socket.on('join-room', async (data, callback) => {
       try {
         const { meetingId } = data;

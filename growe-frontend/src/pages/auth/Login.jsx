@@ -79,6 +79,7 @@ export default function Login() {
           <div className="flex justify-center">
             {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
               <GoogleLogin
+                text="signin_with"
                 onSuccess={async (cred) => {
                   try {
                     const { data } = await api.post('/auth/google', { idToken: cred.credential });

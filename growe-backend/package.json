@@ -1,9 +1,13 @@
 {
   "name": "growe-backend",
   "version": "1.0.0",
-  "description": "GROWE Academic Collaboration Platform - Backend API",
+  "description": "GROWE API — copy .env.example to .env, set DATABASE_URL + JWT_SECRET, then npm run migrate && npm run seed",
   "main": "server.js",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
@@ -23,6 +27,7 @@
     "joi": "^18.1.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
     "pg": "^8.13.0",
     "sanitize-html": "^2.17.2",

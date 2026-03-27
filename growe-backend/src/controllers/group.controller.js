@@ -2,6 +2,8 @@ import * as groupModel from '../models/group.model.js';
 import * as meetingModel from '../models/meeting.model.js';
 import * as meetingService from '../services/meeting.service.js';
 import * as groupInviteModel from '../models/groupInvite.model.js';
+import * as notificationService from '../services/notification.service.js';
+import { logger } from '../utils/logger.js';
 import { generateVerificationToken } from '../utils/generateToken.js';
 
 export const create = async (req, res, next) => {
@@ -105,6 +107,16 @@ export const approveJoin = async (req, res, next) => {
     if (!member) {
       return res.status(404).json({ error: 'Pending request not found' });
     }
+    const group = await groupModel.findById(req.params.id);
+    try {
+      await notificationService.notifyGroupMemberAdded({
+        inviteeUserId: req.params.userId,
+        groupId: req.params.id,
+        groupName: group?.name,
+      });
+    } catch (e) {
+      logger.warn('notifyGroupMemberAdded_after_approve_failed', { err: e.message });
+    }
     res.json(member);
   } catch (err) {
     next(err);
@@ -155,6 +167,16 @@ export const createInviteLink = async (req, res, next) => {
 
     const frontend = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const inviteUrl = `${frontend}/groups/join?token=${encodeURIComponent(token)}`;
+
+    Promise.resolve()
+      .then(() =>
+        notificationService.notifyGroupInviteLinkCreated({
+          creatorUserId: req.user.id,
+          groupName: group.name,
+          inviteUrl,
+        })
+      )
+      .catch(() => {});
 
     res.status(201).json({
       inviteId: invite.id,
@@ -233,6 +255,15 @@ export const addMemberBySearch = async (req, res, next) => {
       return res.status(400).json({ error: 'Group is full' });
     }
     const member = await groupModel.addMember(req.params.id, userId, 'approved');
+    try {
+      await notificationService.notifyGroupMemberAdded({
+        inviteeUserId: userId,
+        groupId: req.params.id,
+        groupName: group.name,
+      });
+    } catch (e) {
+      logger.warn('notifyGroupMemberAdded_failed', { err: e.message, groupId: req.params.id, userId });
+    }
     res.status(201).json(member);
   } catch (err) {
     next(err);

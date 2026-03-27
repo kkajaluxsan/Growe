@@ -43,14 +43,14 @@ export default function GroupDetail() {
 
   useEffect(() => {
     if (group) {
-      api.get(`/groups/${id}/members`)
+      api.get(`/groups/${id}/members`, { skipGlobalErrorToast: true })
         .then(({ data }) => setMembers(data))
         .catch((err) => toast.error(err.response?.data?.error || 'Failed to load group members'));
     }
   }, [group, id, toast]);
 
   const refreshMembers = useCallback(() => {
-    api.get(`/groups/${id}/members`)
+    api.get(`/groups/${id}/members`, { skipGlobalErrorToast: true })
       .then(({ data }) => setMembers(data))
       .catch((err) => toast.error(err.response?.data?.error || 'Failed to load group members'));
   }, [id, toast]);
@@ -58,7 +58,7 @@ export default function GroupDetail() {
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
     setAvailableTutors([]);
-    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id } })
+    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id }, skipGlobalErrorToast: true })
       .then(({ data }) => setAvailableTutors(Array.isArray(data) ? data : []))
       .catch(() => {
         setAvailableTutors([]);
@@ -108,7 +108,10 @@ export default function GroupDetail() {
     setMemberSearchLoading(true);
     api.get(`/groups/${id}/member-search`, { params: { q, limit: 10 } })
       .then(({ data }) => setMemberResults(Array.isArray(data) ? data : []))
-      .catch(() => setMemberResults([]))
+      .catch((err) => {
+        toast.error(err.response?.data?.error || 'Member search failed');
+        setMemberResults([]);
+      })
       .finally(() => setMemberSearchLoading(false));
   };
 

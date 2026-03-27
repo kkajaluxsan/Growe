@@ -5,17 +5,26 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
+  const emailParam = searchParams.get('email');
   const { toast } = useToast();
+  const { refreshUser } = useAuth();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
   const [code, setCode] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => (emailParam ? emailParam.trim() : ''));
   const [resendLoading, setResendLoading] = useState(false);
+
+  useEffect(() => {
+    if (emailParam?.trim()) {
+      setEmail(emailParam.trim());
+    }
+  }, [emailParam]);
 
   useEffect(() => {
     if (!token) {
@@ -26,9 +35,16 @@ export default function VerifyEmail() {
     }
     api
       .get(`/auth/verify-email?token=${encodeURIComponent(token)}`)
-      .then(() => {
+      .then(async () => {
         setStatus('success');
         setMessage('Your email is verified. You can now log in.');
+        if (localStorage.getItem('token')) {
+          try {
+            await refreshUser();
+          } catch {
+            /* not logged in or session invalid — user can still use login */
+          }
+        }
       })
       .catch((err) => {
         setStatus('error');

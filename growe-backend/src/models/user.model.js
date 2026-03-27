@@ -14,20 +14,21 @@ export const createGoogleUser = async ({ email, roleId, providerId, displayName 
   const { rows } = await query(
     `INSERT INTO users (email, password_hash, role_id, is_verified, provider, provider_id, display_name, name)
      VALUES ($1, NULL, $2, true, 'google', $3, $4, $4)
-     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, display_name, avatar_url, created_at, updated_at`,
+     RETURNING id`,
     [email, roleId, providerId, displayName || null]
   );
-  return rows[0];
+  if (!rows[0]?.id) return null;
+  return findById(rows[0].id);
 };
 
 export const linkGoogleProvider = async (userId, providerId) => {
-  const { rows } = await query(
+  const { rowCount } = await query(
     `UPDATE users SET provider = 'google', provider_id = $1, is_verified = true, updated_at = NOW()
-     WHERE id = $2
-     RETURNING id, email, role_id, is_verified, is_active, provider, provider_id, display_name, avatar_url, created_at, updated_at`,
+     WHERE id = $2`,
     [providerId, userId]
   );
-  return rows[0] || null;
+  if (!rowCount) return null;
+  return findById(userId);
 };
 
 export const findByProviderId = async (provider, providerId) => {
@@ -125,6 +126,34 @@ export const updateProfile = async (userId, { displayName, avatarUrl }) => {
     params
   );
   return rows[0] || null;
+};
+
+/**
+ * Global user discovery: verified + active, exclude one user (usually current).
+ * Search matches email or display_name (case-insensitive).
+ */
+export const searchPublicUsers = async ({ excludeUserId, q, limit = 20, offset = 0 }) => {
+  const term = `%${String(q).trim().toLowerCase()}%`;
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.display_name, u.avatar_url
+     FROM users u
+     WHERE u.id <> $1
+       AND u.is_verified = true
+       AND u.is_active = true
+       AND (
+         LOWER(u.email) LIKE $2
+         OR LOWER(COALESCE(u.display_name, '')) LIKE $2
+       )
+     ORDER BY u.email ASC
+     LIMIT $3 OFFSET $4`,
+    [excludeUserId, term, limit, offset]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    name: r.display_name || null,
+    avatar_url: r.avatar_url || null,
+  }));
 };
 
 export const listAll = async ({ limit = 50, offset = 0, roleName, isVerified, isActive } = {}) => {
