@@ -18,7 +18,10 @@ import meetingRoutes from './routes/meeting.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import messagingRoutes from './routes/messaging.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import usersRoutes from './routes/users.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
+import { apiEnvelope } from './middleware/apiEnvelope.middleware.js';
 
 dotenv.config();
 
@@ -34,6 +37,7 @@ app.use(
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: true, limit: '512kb' }));
 app.use(cookieParser());
+app.use(apiEnvelope);
 
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
@@ -59,6 +63,8 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {

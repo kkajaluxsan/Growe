@@ -13,7 +13,10 @@ import {
   getVerificationExpiryLabel,
 } from '../utils/generateToken.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.service.js';
+import { isSmtpConfigured } from '../services/emailDelivery.service.js';
+import * as notificationModel from '../models/notification.model.js';
 import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
+import { smtpConfig } from '../config/smtp.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -54,85 +57,134 @@ const issueAuthResponse = async (res, user) => {
   };
 };
 
+/**
+ * Issue a fresh verification token and optional email after new signup or "resume" signup for unverified email.
+ */
+async function issueRegistrationVerification(userId, { resumed }) {
+  await emailVerificationModel.deleteByUserId(userId);
+  const user = await userModel.findById(userId);
+  const token = generateVerificationToken();
+  const expiresAt = getVerificationExpiryDate();
+  const expiryLabel = getVerificationExpiryLabel();
+  await emailVerificationModel.create({
+    userId: user.id,
+    token,
+    expiresAt,
+  });
+
+  const base = smtpConfig.frontendUrl.replace(/\/$/, '');
+  const verificationUrl = `${base}/verify-email?token=${encodeURIComponent(token)}`;
+
+  let emailSent = false;
+  let emailSendError = null;
+  try {
+    await sendVerificationEmail({
+      email: user.email,
+      token,
+      expiresIn: expiryLabel,
+    });
+    emailSent = true;
+  } catch (emailErr) {
+    emailSendError = emailErr;
+    console.error('Verification email failed:', emailErr);
+  }
+
+  const payload = {
+    message: emailSent
+      ? resumed
+        ? 'We sent a new verification link to your email.'
+        : 'We sent a verification link to your email.'
+      : resumed
+        ? 'Your account was updated. Complete verification using the options in the app.'
+        : 'Your account was created. Complete verification using the options in the app.',
+    emailSent,
+    user: {
+      id: user.id,
+      email: user.email,
+      roleName: user.role_name,
+      isVerified: false,
+    },
+  };
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction) {
+    payload.verificationLink = verificationUrl;
+  }
+  if (!emailSent && !isProduction && emailSendError) {
+    payload.message =
+      'We could not send the verification email automatically. You can open the verification link below or request a new email.';
+  }
+
+  return { payload, emailSent, isProduction };
+}
+
 export const register = async (req, res, next) => {
   try {
     const { email, password, roleName, name } = req.body;
-
-    const existing = await userModel.findByEmail(email);
-    if (existing) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
+    const emailNorm = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const existing = emailNorm ? await userModel.findByEmail(emailNorm) : null;
 
     const role = await roleModel.findByName(roleName);
     if (!role) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
+    if (existing) {
+      if (existing.is_verified) {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      if (existing.provider === 'google' && !existing.password_hash) {
+        return res.status(409).json({
+          error: 'This email is reserved for Google sign-in. Use Sign in with Google on the login page.',
+          code: 'GOOGLE_SIGNUP_REQUIRED',
+        });
+      }
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      await userModel.updatePasswordHash(existing.id, passwordHash);
+      if (existing.role_id !== role.id) {
+        await userModel.updateRole(existing.id, role.id);
+      }
+      if (name && typeof name === 'string' && name.trim()) {
+        await userModel.updateProfile(existing.id, { displayName: name.trim() });
+      }
+      const result = await issueRegistrationVerification(existing.id, { resumed: true });
+      const forceEmail =
+        process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
+      const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
+      if (!result.emailSent && mustDeliverEmail) {
+        return res.status(503).json({
+          success: false,
+          error: 'Failed to send verification email. Please try again later or contact support.',
+          code: 'EMAIL_SEND_FAILED',
+          details:
+            'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM for your provider. Check server logs for the underlying error.',
+        });
+      }
+      return res.status(201).json(result.payload);
+    }
+
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await userModel.create({
-      email: email.toLowerCase().trim(),
+    const created = await userModel.create({
+      email: emailNorm,
       passwordHash,
       roleId: role.id,
     });
     if (name && typeof name === 'string' && name.trim()) {
-      await userModel.updateProfile(user.id, { displayName: name.trim() });
+      await userModel.updateProfile(created.id, { displayName: name.trim() });
     }
-
-    const token = generateVerificationToken();
-    const expiresAt = getVerificationExpiryDate();
-    const expiryLabel = getVerificationExpiryLabel();
-    await emailVerificationModel.create({
-      userId: user.id,
-      token,
-      expiresAt,
-    });
-
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${encodeURIComponent(token)}`;
-
-    let emailSent = false;
-    let emailSendError = null;
-    try {
-      await sendVerificationEmail({
-        email: user.email,
-        token,
-        expiresIn: expiryLabel,
-      });
-      emailSent = true;
-    } catch (emailErr) {
-      emailSendError = emailErr;
-      console.error('Verification email failed:', emailErr);
-      // Keep account unverified; user can request a new link later.
-    }
-
-    const payload = {
-      message: 'Registration successful. Please verify your email by clicking the link we sent you.',
-      emailSent,
-      user: {
-        id: user.id,
-        email: user.email,
-        roleName,
-        isVerified: false,
-      },
-    };
-    if (process.env.NODE_ENV === 'development') {
-      payload.verificationLink = verificationUrl;
-    }
-    const mustDeliverEmail =
-      process.env.NODE_ENV === 'production' ||
-      process.env.FORCE_EMAIL_VERIFICATION === '1' ||
-      !!process.env.SMTP_USER;
-    if (!emailSent && mustDeliverEmail) {
+    const result = await issueRegistrationVerification(created.id, { resumed: false });
+    const forceEmail =
+      process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
+    const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
+    if (!result.emailSent && mustDeliverEmail) {
       return res.status(503).json({
         success: false,
         error: 'Failed to send verification email. Please try again later or contact support.',
         code: 'EMAIL_SEND_FAILED',
-        details: process.env.NODE_ENV === 'development'
-          ? 'SMTP is configured but email delivery failed. Check SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE and provider settings.'
-          : undefined,
+        details:
+          'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM for your provider. Check server logs for the underlying error.',
       });
     }
-
-    return res.status(201).json(payload);
+    return res.status(201).json(result.payload);
   } catch (err) {
     next(err);
   }
@@ -341,6 +393,19 @@ export const forgotPassword = async (req, res, next) => {
     } catch (e) {
       console.error('Password reset email failed:', e);
       return res.status(503).json({ success: false, error: 'Could not send email. Try again later.' });
+    }
+    try {
+      await notificationModel.create({
+        userId: user.id,
+        type: 'system',
+        title: 'Password reset requested',
+        message: 'We sent a link to your email to reset your password.',
+        metadata: { event: 'password_reset' },
+        emailSent: true,
+        emailSentAt: new Date(),
+      });
+    } catch (e) {
+      console.error('Password reset in-app notification failed:', e);
     }
 
     return res.json(generic);

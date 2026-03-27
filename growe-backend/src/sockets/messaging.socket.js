@@ -2,6 +2,7 @@ import * as conversationModel from '../models/conversation.model.js';
 import * as messageModel from '../models/message.model.js';
 import * as userModel from '../models/user.model.js';
 import * as tutorModel from '../models/tutor.model.js';
+import * as messagingService from '../services/messaging.service.js';
 import { sanitizeMessageContent } from '../utils/sanitize.js';
 
 const MAX_MESSAGE_LENGTH = 4000;
@@ -16,6 +17,28 @@ function stopTypingBroadcast(socket, conversationId) {
     typingTimers.delete(key);
   }
   socket.to(`conversation-${conversationId}`).emit('stop-typing', { userId: socket.userId });
+}
+
+async function assertUserCanUseMessaging(socket) {
+  const user = await userModel.findById(socket.userId);
+  if (!user?.is_active) {
+    const err = new Error('Account is deactivated');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (!user.is_verified) {
+    const err = new Error('Please verify your email to unlock all features');
+    err.code = 'EMAIL_NOT_VERIFIED';
+    err.statusCode = 403;
+    throw err;
+  }
+  const profile = await tutorModel.findProfileByUserId(socket.userId);
+  if (profile?.is_suspended) {
+    const err = new Error('Account suspended');
+    err.statusCode = 403;
+    throw err;
+  }
+  return user;
 }
 
 export const initMessaging = (io) => {
@@ -50,8 +73,17 @@ export const initMessaging = (io) => {
 
     socket.on('send-message', async (data, callback) => {
       try {
-        const { conversationId, content } = data;
-        if (!conversationId || content == null) {
+        const { conversationId, content, attachment } = data || {};
+        const hasAttachment =
+          attachment &&
+          typeof attachment === 'object' &&
+          typeof attachment.url === 'string' &&
+          attachment.url.length > 0;
+        if (!conversationId) {
+          callback?.({ error: 'Conversation ID required' });
+          return;
+        }
+        if (!hasAttachment && content == null) {
           callback?.({ error: 'Conversation ID and content required' });
           return;
         }
@@ -74,22 +106,34 @@ export const initMessaging = (io) => {
           callback?.({ error: 'Account suspended' });
           return;
         }
-        const sanitized = sanitizeMessageContent(String(content));
-        if (sanitized.length < 1 || sanitized.length > MAX_MESSAGE_LENGTH) {
-          callback?.({ error: 'Invalid message length' });
-          return;
+        let full;
+        if (hasAttachment) {
+          full = await messagingService.sendMessage(
+            conversationId,
+            socket.userId,
+            content == null ? '' : String(content),
+            'FILE',
+            {
+              url: attachment.url,
+              name: attachment.name,
+              mime: attachment.mime,
+              size: attachment.size,
+            }
+          );
+        } else {
+          const sanitized = sanitizeMessageContent(String(content));
+          if (sanitized.length < 1 || sanitized.length > MAX_MESSAGE_LENGTH) {
+            callback?.({ error: 'Invalid message length' });
+            return;
+          }
+          full = await messagingService.sendMessage(conversationId, socket.userId, String(content), 'TEXT');
         }
-        const message = await messageModel.create({
-          conversationId,
-          senderId: socket.userId,
-          content: sanitized,
-          messageType: 'TEXT',
-        });
-        const full = await messageModel.findById(message.id);
         socket.to(`conversation-${conversationId}`).emit('receive-message', full);
         callback?.({ success: true, message: full });
       } catch (err) {
-        callback?.({ error: err.message || 'Failed to send' });
+        const status = err.statusCode;
+        const msg = err.message || 'Failed to send';
+        callback?.({ error: msg, code: status === 400 ? 'INVALID_MESSAGE' : undefined });
       }
     });
 
@@ -154,25 +198,23 @@ export const initMessaging = (io) => {
           callback?.({ error: 'Message ID and content required' });
           return;
         }
-        const existing = await messageModel.findById(messageId);
-        if (!existing || existing.sender_id !== socket.userId) {
-          callback?.({ error: 'Message not found or access denied' });
-          return;
-        }
         const sanitized = sanitizeMessageContent(String(content));
         if (sanitized.length < 1 || sanitized.length > MAX_MESSAGE_LENGTH) {
           callback?.({ error: 'Invalid message length' });
           return;
         }
-        const updated = await messageModel.updateContent(messageId, socket.userId, sanitized);
-        if (!updated) {
+        const full = await messagingService.editMessage(messageId, socket.userId, String(content));
+        if (!full) {
           callback?.({ error: 'Update failed' });
           return;
         }
-        const full = await messageModel.findById(messageId);
-        io.to(`conversation-${existing.conversation_id}`).emit('message-edited', full);
+        io.to(`conversation-${full.conversation_id}`).emit('message-edited', full);
         callback?.({ success: true, message: full });
       } catch (err) {
+        if (err.statusCode) {
+          callback?.({ error: err.message });
+          return;
+        }
         callback?.({ error: err.message || 'Failed' });
       }
     });
@@ -185,12 +227,189 @@ export const initMessaging = (io) => {
           return;
         }
         const existing = await messageModel.findById(messageId);
-        if (!existing || existing.sender_id !== socket.userId) {
+        if (!existing) {
           callback?.({ error: 'Message not found or access denied' });
           return;
         }
-        await messageModel.softDelete(messageId, socket.userId);
-        io.to(`conversation-${existing.conversation_id}`).emit('message-deleted', { messageId, conversationId: existing.conversation_id });
+        const convId = existing.conversation_id;
+        await messagingService.deleteMessage(messageId, socket.userId);
+        io.to(`conversation-${convId}`).emit('message-deleted', { messageId, conversationId: convId });
+        callback?.({ success: true });
+      } catch (err) {
+        if (err.statusCode) {
+          callback?.({ error: err.message });
+          return;
+        }
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    // --- Direct (1:1) voice / video — relay via user-${id} rooms (joined in signaling socket) ---
+    socket.on('dm-call-invite', async (data, callback) => {
+      try {
+        const { conversationId, callId, callType } = data || {};
+        if (!conversationId || !callId || (callType !== 'voice' && callType !== 'video')) {
+          callback?.({ error: 'Invalid call' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Calls are only available in direct chats between two people' });
+          return;
+        }
+        const me = await userModel.findById(socket.userId);
+        io.to(`user-${otherId}`).emit('dm-incoming-call', {
+          callId,
+          conversationId,
+          callType,
+          fromUserId: socket.userId,
+          fromDisplayName: me.display_name || me.email,
+        });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-cancel', async (data, callback) => {
+      try {
+        const { conversationId, callId } = data || {};
+        if (!conversationId || !callId) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-ended', { callId, conversationId, reason: 'cancelled' });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-accept', async (data, callback) => {
+      try {
+        const { conversationId, callId } = data || {};
+        if (!conversationId || !callId) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-accepted', {
+          callId,
+          conversationId,
+          byUserId: socket.userId,
+        });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-decline', async (data, callback) => {
+      try {
+        const { conversationId, callId } = data || {};
+        if (!conversationId || !callId) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-ended', { callId, conversationId, reason: 'declined' });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-end', async (data, callback) => {
+      try {
+        const { conversationId, callId } = data || {};
+        if (!conversationId || !callId) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-ended', { callId, conversationId, reason: 'ended' });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-offer', async (data, callback) => {
+      try {
+        const { conversationId, callId, sdp } = data || {};
+        if (!conversationId || !callId || !sdp) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-offer', { callId, conversationId, sdp, fromUserId: socket.userId });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-answer', async (data, callback) => {
+      try {
+        const { conversationId, callId, sdp } = data || {};
+        if (!conversationId || !callId || !sdp) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-answer', { callId, conversationId, sdp, fromUserId: socket.userId });
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ error: err.message || 'Failed' });
+      }
+    });
+
+    socket.on('dm-call-ice', async (data, callback) => {
+      try {
+        const { conversationId, callId, candidate } = data || {};
+        if (!conversationId || !callId || !candidate) {
+          callback?.({ error: 'Invalid' });
+          return;
+        }
+        await assertUserCanUseMessaging(socket);
+        const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
+        if (!otherId) {
+          callback?.({ error: 'Invalid conversation' });
+          return;
+        }
+        io.to(`user-${otherId}`).emit('dm-call-ice', { callId, conversationId, candidate, fromUserId: socket.userId });
         callback?.({ success: true });
       } catch (err) {
         callback?.({ error: err.message || 'Failed' });

@@ -3,6 +3,16 @@
 
 Production-grade academic collaboration system for university students: peer learning, tutoring, assignment management, and real-time group meetings.
 
+## Quick start (share this repo)
+
+1. Install [Node.js 18+](https://nodejs.org/) and [PostgreSQL](https://www.postgresql.org/), then create a database: `createdb growe`
+2. From the **repo root**: `npm run setup`
+3. Copy `growe-backend/.env.example` → `growe-backend/.env` and set at least **`DATABASE_URL`** and **`JWT_SECRET`** (long random string)
+4. `npm run migrate` then `npm run db:seed` (optional; adds default admin user)
+5. `npm run dev` → open **http://localhost:5173** (API on **http://localhost:5001**)
+
+Optional: `npm run dev:lan` to expose the Vite UI on your LAN (same machine must reach the API; adjust firewall if needed).
+
 ## Tech Stack
 
 - **Backend:** Node.js, Express, PostgreSQL, JWT, bcrypt, Socket.IO
@@ -112,13 +122,33 @@ Requires `growe-backend/.env` and a running PostgreSQL (or use a `db` service in
 | Bookings | POST /api/bookings, list, cancel, status |
 | Meetings | GET/POST /api/meetings, WebRTC via Socket.IO |
 | Messaging | GET /api/conversations, POST /conversations/direct/:userId, GET /conversations/:id/messages, Socket: join-conversation, send-message, typing, mark-as-read |
+| Users | GET /api/users/search?q=&limit=&page= (verified + active; excludes self; Teams-style discovery) |
 | Admin | GET /api/admin/metrics, users, audit-log; PATCH users; suspend/terminate |
 
 ## Architecture
 
+### Primary API (production path)
+
+- **React (`growe-frontend`)** proxies `/api` to **Node (`growe-backend`)** on port **5001** (see `growe-frontend/vite.config.js`).
+- **JSON envelope (Node):** Successful JSON responses are normalized to `{ success: true, message: 'OK', data }` via `apiEnvelope` middleware (skipped for `/api/health` and `/api/csrf-token`). The Axios client unwraps `data` so most UI code still receives the inner payload. Errors use `{ success: false, error, ... }` when applicable.
+- **Identity:** authenticated user comes from JWT + refresh cookie; core actions require **verified** users where enforced by middleware and sockets.
+- **Direct messaging:** Verified users can start DMs with other **active + verified** users (Teams-like). Admins can message any **active** user for admin flows.
+- **Laravel (`growe-backend-laravel-app`):** optional parallel implementation; the Vite dev app does **not** call Laravel by default. Use one stack in production to avoid drift.
+
+### Modules
+
 - **MVC** + service layer; centralized error handling and logging
 - **RBAC:** Admin, Tutor, Student; verified-user middleware
-- **Email verification:** Token-based, resend with rate limit; optional dev auto-verify
+- **Email verification:** Token-based, resend with rate limit
 - **Booking:** Transactional overlap checks, indexes for performance
 - **Meetings:** WebRTC mesh + Socket.IO signaling; admin force-terminate
 - **Audit:** Admin actions logged to `audit_log`
+
+### End-to-end smoke (dev)
+
+1. Register / Google login → verified user
+2. `GET /api/users/search?q=test` → list users
+3. Messages → new message → direct chat (policy may require shared group/booking)
+4. Groups → create → invite / member search → add member
+5. Tutors → availability → schedule meeting from group
+6. Meeting room → join with second user (WebRTC)

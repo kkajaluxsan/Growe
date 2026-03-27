@@ -1,4 +1,5 @@
 import * as assignmentModel from '../models/assignment.model.js';
+import * as notificationService from './notification.service.js';
 import { sanitizePlainText } from '../utils/textSanitize.js';
 import {
   PRIORITY_TO_DB,
@@ -97,6 +98,9 @@ export async function createAssignment(userId, body) {
     priority: priorityDb,
     deadline,
   });
+  Promise.resolve()
+    .then(() => notificationService.notifyAssignmentCreated({ userId, assignment: row }))
+    .catch(() => {});
   return enrichAssignment(row);
 }
 

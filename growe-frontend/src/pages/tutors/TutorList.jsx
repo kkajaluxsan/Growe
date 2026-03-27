@@ -23,7 +23,7 @@ export default function TutorList() {
   const [dateRange, setDateRange] = useState(() => getDateRange(14));
 
   useEffect(() => {
-    api.get('/tutors/list')
+    api.get('/tutors/list', { skipGlobalErrorToast: true })
       .then(({ data }) => setTutors(data))
       .catch(() => toast.error('Failed to load tutors'))
       .finally(() => setLoading(false));
@@ -31,7 +31,7 @@ export default function TutorList() {
 
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
-    api.get('/tutors/slots', { params: dateRange })
+    api.get('/tutors/slots', { params: dateRange, skipGlobalErrorToast: true })
       .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
       .catch(() => {
         setSlots([]);
@@ -109,20 +109,22 @@ function formatSlotTime(start, end) {
 }
 
 function SlotsByTutor({ slots, onBooked, toast }) {
-  const byTutor = slots.slice(0, 50).reduce((acc, s) => {
-    const key = s.tutorEmail || 'Unknown';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(s);
-    return acc;
-  }, {});
+  const byTutor = new Map();
+  for (const s of slots.slice(0, 50)) {
+    const key = s.tutorId ?? s.tutorEmail ?? 'unknown';
+    if (!byTutor.has(key)) {
+      byTutor.set(key, { label: s.tutorEmail || 'Tutor', slots: [] });
+    }
+    byTutor.get(key).slots.push(s);
+  }
 
   return (
     <div className="space-y-6">
-      {Object.entries(byTutor).map(([email, tutorSlots]) => (
-        <Card key={email} className="overflow-hidden">
+      {Array.from(byTutor.entries()).map(([tutorKey, { label, slots: tutorSlots }]) => (
+        <Card key={String(tutorKey)} className="overflow-hidden">
           <div className="pb-2 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate text-sm" title={email}>
-              {email}
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate text-sm" title={label}>
+              {label}
             </h3>
           </div>
           <div className="pt-3 flex flex-col gap-2">

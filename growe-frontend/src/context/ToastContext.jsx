@@ -48,6 +48,10 @@ export const ToastProvider = ({ children }) => {
         toast.warning(message || 'Please verify your email to unlock all features');
         return;
       }
+      if (status === 403) {
+        toast.warning(message || 'Access denied');
+        return;
+      }
       if (status === 400 || status === 409) {
         toast.error(message || 'Request failed');
         return;
