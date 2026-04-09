@@ -4,6 +4,7 @@ import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
+import { authLabel, authInput } from '../../components/auth/authFieldStyles';
 
 export default function ResetPassword() {
   const { toast } = useToast();
@@ -55,12 +56,15 @@ export default function ResetPassword() {
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">New password</label>
+            <label htmlFor="reset-password" className={authLabel}>
+              New password
+            </label>
             <input
+              id="reset-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-growe/50"
+              className={authInput}
               minLength={8}
               required
               autoComplete="new-password"
@@ -68,12 +72,15 @@ export default function ResetPassword() {
             />
           </div>
           <div>
-            <label className="block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Confirm password</label>
+            <label htmlFor="reset-password-confirm" className={authLabel}>
+              Confirm password
+            </label>
             <input
+              id="reset-password-confirm"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-growe/50"
+              className={authInput}
               minLength={8}
               required
               autoComplete="new-password"

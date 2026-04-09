@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { localDateInputMin } from '../../utils/dateInput';
 import TutorRequestPanel from '../../components/bookings/TutorRequestPanel';
+import GroupTutorInvitePanel from '../../components/bookings/GroupTutorInvitePanel';
+import TutorBookingCalendar from '../../components/bookings/TutorBookingCalendar';
 
 export default function TutorDashboard() {
-  const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [availability, setAvailability] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -21,6 +24,12 @@ export default function TutorDashboard() {
       loadBookings();
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (activeTab === 'schedule' && profile) {
+      loadBookings();
+    }
+  }, [activeTab, profile]);
 
   const loadProfile = () => {
     setLoading(true);
@@ -55,22 +64,32 @@ export default function TutorDashboard() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Tutor Dashboard</h1>
-      <div className="flex gap-2 mb-6">
+      <div className="mb-6 flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => setActiveTab('profile')}
-          className={`px-4 py-2 rounded ${activeTab === 'profile' ? 'bg-slate-800 text-white' : 'bg-slate-200'}`}
+          className={`rounded px-4 py-2 ${activeTab === 'profile' ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}
         >
           My Profile
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('availability')}
-          className={`px-4 py-2 rounded ${activeTab === 'availability' ? 'bg-slate-800 text-white' : 'bg-slate-200'}`}
+          className={`rounded px-4 py-2 ${activeTab === 'availability' ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}
         >
           My Availability
         </button>
         <button
+          type="button"
+          onClick={() => setActiveTab('schedule')}
+          className={`rounded px-4 py-2 ${activeTab === 'schedule' ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}
+        >
+          Calendar
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('bookings')}
-          className={`px-4 py-2 rounded ${activeTab === 'bookings' ? 'bg-slate-800 text-white' : 'bg-slate-200'}`}
+          className={`rounded px-4 py-2 ${activeTab === 'bookings' ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}
         >
           My Bookings
         </button>
@@ -82,6 +101,7 @@ export default function TutorDashboard() {
       {activeTab === 'availability' && (
         <TutorAvailabilitySection availability={availability} onUpdate={loadAvailability} />
       )}
+      {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
       {activeTab === 'bookings' && (
         <TutorBookingsSection bookings={bookings} onUpdate={loadBookings} />
       )}
@@ -206,6 +226,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
               type="date"
               value={availableDate}
               onChange={(e) => setAvailableDate(e.target.value)}
+              min={localDateInputMin()}
               className="border rounded py-2 px-3"
               required
             />
@@ -276,7 +297,25 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
 }
 
 function TutorBookingsSection({ bookings, onUpdate }) {
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [busyId, setBusyId] = useState('');
+  const [groupInvites, setGroupInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(true);
+  const [actingInviteId, setActingInviteId] = useState(null);
+
+  const loadGroupInvites = useCallback(() => {
+    setInvitesLoading(true);
+    api
+      .get('/tutors/group-invites', { skipGlobalErrorToast: true })
+      .then(({ data }) => setGroupInvites(Array.isArray(data) ? data : []))
+      .catch(() => setGroupInvites([]))
+      .finally(() => setInvitesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadGroupInvites();
+  }, [loadGroupInvites]);
 
   const handleStatus = async (bookingId, status) => {
     try {
@@ -284,32 +323,60 @@ function TutorBookingsSection({ bookings, onUpdate }) {
       await api.patch(`/bookings/${bookingId}/status`, { status });
       onUpdate();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || 'Failed');
     } finally {
       setBusyId('');
     }
   };
 
-  if (bookings.length === 0) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4">My Bookings</h2>
-        <p className="text-gray-600">No bookings yet.</p>
-      </div>
-    );
-  }
+  const handleAcceptGroupInvite = (inv) => {
+    setActingInviteId(inv.id);
+    api
+      .post(`/groups/${inv.group_id}/tutor-invites/${inv.id}/accept`)
+      .then(({ data }) => {
+        toast.success('You joined the group. Session scheduled.');
+        loadGroupInvites();
+        onUpdate();
+        if (data?.meeting?.id) navigate(`/meetings/${data.meeting.id}`);
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Could not accept'))
+      .finally(() => setActingInviteId(null));
+  };
+
+  const handleDeclineGroupInvite = (inv) => {
+    setActingInviteId(inv.id);
+    api
+      .post(`/groups/${inv.group_id}/tutor-invites/${inv.id}/reject`)
+      .then(() => {
+        toast.success('Request declined');
+        loadGroupInvites();
+      })
+      .catch((err) => toast.error(err.response?.data?.error || 'Could not decline'))
+      .finally(() => setActingInviteId(null));
+  };
 
   return (
     <div className="space-y-6">
+      <GroupTutorInvitePanel
+        invites={groupInvites}
+        loading={invitesLoading}
+        actingId={actingInviteId}
+        onAccept={handleAcceptGroupInvite}
+        onDecline={handleDeclineGroupInvite}
+      />
+
       <TutorRequestPanel
         bookings={bookings}
         busyId={busyId}
         onAccept={(b) => handleStatus(b.id, 'confirmed')}
-        onDecline={(b) => handleStatus(b.id, 'rejected')}
+        onDecline={(b) => handleStatus(b.id, 'cancelled')}
       />
 
-      <div className="bg-white rounded-lg shadow p-6 overflow-x-auto">
-        <h2 className="text-lg font-semibold mb-4">My Bookings</h2>
+      <div className="bg-white dark:bg-slate-900 rounded-lg shadow p-6 overflow-x-auto">
+        <h2 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">My Bookings</h2>
+        {bookings.length === 0 ? (
+          <p className="text-gray-600 dark:text-slate-400">No booking rows yet. Group tutor requests above become bookings after you accept.</p>
+        ) : (
       <table className="min-w-full">
         <thead>
           <tr className="border-b text-left">
@@ -329,7 +396,7 @@ function TutorBookingsSection({ bookings, onUpdate }) {
                 {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
                   <>
                     <button onClick={() => handleStatus(b.id, 'confirmed')} className="text-green-600 hover:underline mr-2">Confirm</button>
-                    <button onClick={() => handleStatus(b.id, 'rejected')} className="text-red-600 hover:underline">Decline</button>
+                    <button onClick={() => handleStatus(b.id, 'cancelled')} className="text-red-600 hover:underline">Decline</button>
                   </>
                 )}
                 {b.status === 'confirmed' && (
@@ -344,6 +411,7 @@ function TutorBookingsSection({ bookings, onUpdate }) {
           ))}
         </tbody>
       </table>
+        )}
       </div>
     </div>
   );

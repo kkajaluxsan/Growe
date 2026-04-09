@@ -2,19 +2,27 @@ import { query } from '../config/db.js';
 
 const activeClause = 'deleted_at IS NULL';
 
-export const create = async ({ userId, title, description, status = 'pending', priority = 2, deadline }) => {
+export const create = async ({
+  userId,
+  title,
+  description,
+  status = 'pending',
+  priority = 2,
+  deadline,
+  visibleToAll = false,
+}) => {
   const { rows } = await query(
-    `INSERT INTO assignments (user_id, title, description, status, priority, deadline)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, user_id, title, description, status, priority, deadline, created_at, updated_at`,
-    [userId, title, description, status, priority, deadline]
+    `INSERT INTO assignments (user_id, title, description, status, priority, deadline, visible_to_all)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, user_id, title, description, status, priority, deadline, visible_to_all, created_at, updated_at`,
+    [userId, title, description, status, priority, deadline, visibleToAll]
   );
   return rows[0];
 };
 
 export const findById = async (id) => {
   const { rows } = await query(
-    `SELECT id, user_id, title, description, status, priority, deadline, created_at, updated_at
+    `SELECT id, user_id, title, description, status, priority, deadline, visible_to_all, created_at, updated_at
      FROM assignments WHERE id = $1 AND ${activeClause}`,
     [id]
   );
@@ -57,8 +65,8 @@ export const listByUser = async (
   const sort = validSort.includes(sortBy) ? sortBy : 'deadline';
   const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
 
-  let sql = `SELECT id, user_id, title, description, status, priority, deadline, created_at, updated_at
-     FROM assignments WHERE user_id = $1 AND ${activeClause}`;
+  let sql = `SELECT id, user_id, title, description, status, priority, deadline, visible_to_all, created_at, updated_at
+     FROM assignments WHERE (user_id = $1 OR visible_to_all = TRUE) AND ${activeClause}`;
   sql += ` ${fragments.join(' ')}`;
   sql += ` ORDER BY ${sort} ${order} NULLS LAST LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`;
 
@@ -69,7 +77,7 @@ export const listByUser = async (
 
 export const countByUser = async (userId, { status, priority, deadlineAfter, deadlineBefore } = {}) => {
   const { fragments, params } = buildListFilters({ status, priority, deadlineAfter, deadlineBefore });
-  let sql = `SELECT COUNT(*)::int AS c FROM assignments WHERE user_id = $1 AND ${activeClause}`;
+  let sql = `SELECT COUNT(*)::int AS c FROM assignments WHERE (user_id = $1 OR visible_to_all = TRUE) AND ${activeClause}`;
   sql += ` ${fragments.join(' ')}`;
   const { rows } = await query(sql, [userId, ...params]);
   return rows[0]?.c ?? 0;
@@ -109,7 +117,7 @@ export const update = async (id, { title, description, status, priority, deadlin
   params.push(id);
   const { rows } = await query(
     `UPDATE assignments SET ${updates.join(', ')} WHERE id = $${i} AND ${activeClause}
-     RETURNING id, user_id, title, description, status, priority, deadline, created_at, updated_at`,
+     RETURNING id, user_id, title, description, status, priority, deadline, visible_to_all, created_at, updated_at`,
     params
   );
   return rows[0] || null;

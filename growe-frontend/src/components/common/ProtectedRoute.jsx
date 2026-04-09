@@ -21,8 +21,12 @@ export default function ProtectedRoute({ children, requireVerified = false, role
     return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
-  if (roles.length > 0 && !roles.includes(user.roleName)) {
-    return <Navigate to="/" replace />;
+  if (roles.length > 0) {
+    const normalized = String(user.roleName || '').toLowerCase();
+    const allowed = roles.map((r) => String(r).toLowerCase());
+    if (!allowed.includes(normalized)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return children;

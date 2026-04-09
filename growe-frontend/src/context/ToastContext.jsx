@@ -56,8 +56,17 @@ export const ToastProvider = ({ children }) => {
         toast.error(message || 'Request failed');
         return;
       }
+      if (status === 429) {
+        toast.warning(message || 'Too many requests. Try again in a moment.');
+        return;
+      }
+      // 502/503 often carry a specific message (e.g. AI not configured, upstream outage)
+      if (status === 502 || status === 503) {
+        toast.warning(message || 'Service temporarily unavailable.');
+        return;
+      }
       if (status >= 500) {
-        toast.error('Server error. Please try again.');
+        toast.error(message || 'Server error. Please try again.');
         return;
       }
     };

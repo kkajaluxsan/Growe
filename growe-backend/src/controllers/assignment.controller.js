@@ -2,7 +2,9 @@ import * as assignmentService from '../services/assignment.service.js';
 
 export const create = async (req, res, next) => {
   try {
-    const row = await assignmentService.createAssignment(req.user.id, req.body);
+    const row = await assignmentService.createAssignment(req.user.id, req.body, {
+      roleName: req.user.roleName,
+    });
     res.status(201).json(row);
   } catch (err) {
     next(err);

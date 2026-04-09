@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { useSocket } from '../../context/SocketContext';
 import EmailVerificationBanner from '../common/EmailVerificationBanner';
+import BookingSessionDesktopAlerts from './BookingSessionDesktopAlerts';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -31,6 +32,7 @@ export default function Layout() {
         </div>
       )}
       <EmailVerificationBanner />
+      <BookingSessionDesktopAlerts />
       <div className="flex-1 flex min-h-0">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0 min-h-0">

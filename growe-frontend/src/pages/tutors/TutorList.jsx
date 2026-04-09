@@ -4,6 +4,7 @@ import api from '../../services/api';
 import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
+import { localDateInputMin } from '../../utils/dateInput';
 import SlotGrid from '../../components/bookings/SlotGrid';
 import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
 import BookingRejectedModal from '../../components/bookings/BookingRejectedModal';
@@ -11,7 +12,7 @@ import BookingRejectedModal from '../../components/bookings/BookingRejectedModal
 function getTodayPlus(days = 1) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localDateInputMin(d);
 }
 
 function keyToRange(key) {
@@ -174,7 +175,7 @@ export default function TutorList() {
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 10)}
+                min={localDateInputMin()}
                 className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
               />
               <Button size="sm" variant="secondary" onClick={fetchSlots} disabled={slotsLoading}>
