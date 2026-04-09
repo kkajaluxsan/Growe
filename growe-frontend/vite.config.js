@@ -12,15 +12,19 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:5001',
         changeOrigin: true,
+        timeout: 60_000,
+        proxyTimeout: 60_000,
       },
       '/uploads': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:5001',
         changeOrigin: true,
+        timeout: 60_000,
+        proxyTimeout: 60_000,
       },
       '/socket.io': {
-        target: 'http://localhost:5001',
+        target: 'http://127.0.0.1:5001',
         ws: true,
       },
     },

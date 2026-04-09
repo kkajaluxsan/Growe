@@ -13,10 +13,19 @@ const router = Router();
 router.get('/list', authenticate, requireVerified, tutorController.listTutors);
 router.get('/slots', authenticate, requireVerified, tutorController.getAvailableSlots);
 router.get('/available', authenticate, requireVerified, tutorController.getAvailableTutorsByDate);
+router.get(
+  '/available-for-slot',
+  authenticate,
+  requireVerified,
+  requireRole('student', 'tutor'),
+  tutorController.getAvailableForGroupSlot
+);
 
 router.use(authenticate);
 router.use(requireVerified);
 router.use(requireRole('tutor'));
+
+router.get('/group-invites', tutorController.listPendingGroupInvites);
 
 router.post('/profile', validateTutorProfile, tutorController.createProfile);
 router.get('/profile', tutorController.getProfile);

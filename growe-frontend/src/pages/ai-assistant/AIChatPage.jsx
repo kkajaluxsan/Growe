@@ -9,7 +9,31 @@ export default function AIChatPage() {
   const { toast } = useToast();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [aiConfigured, setAiConfigured] = useState(true);
+  const [aiStatusLoading, setAiStatusLoading] = useState(true);
+  const [providerOrder, setProviderOrder] = useState([]);
   const bottomRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/ai/status', { skipGlobalErrorToast: true })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setAiConfigured(!!data?.configured);
+          setProviderOrder(Array.isArray(data?.order) ? data.order : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAiConfigured(false);
+      })
+      .finally(() => {
+        if (!cancelled) setAiStatusLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -23,19 +47,16 @@ export default function AIChatPage() {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setLoading(true);
     try {
-      const { data } = await api.post('/ai/chat', { message: text });
+      const { data } = await api.post('/ai/chat', { message: text }, { skipGlobalErrorToast: true });
       const reply = data?.reply ?? '';
       setMessages((prev) => [...prev, { role: 'assistant', content: reply || '(No response)' }]);
     } catch (err) {
+      const status = err.response?.status;
       const msg = err.response?.data?.error || 'Could not reach the AI assistant.';
-      toast.error(msg);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Sorry — something went wrong. ${msg}`,
-        },
-      ]);
+      if (status === 429) toast.warning(msg);
+      else if (status === 502 || status === 503) toast.warning(msg);
+      else toast.error(msg);
+      setMessages((prev) => [...prev, { role: 'assistant', content: msg }]);
     } finally {
       setLoading(false);
     }
@@ -69,11 +90,29 @@ export default function AIChatPage() {
             <div>
               <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">AI Assistant</h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">Academic help for your GROWE workspace</p>
+              {aiConfigured && providerOrder.length > 0 && (
+                <p className="mt-0.5 text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                  Providers: {providerOrder.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' → ')}
+                </p>
+              )}
             </div>
             <Button type="button" variant="secondary" size="sm" onClick={clearChat} disabled={messages.length === 0 && !loading}>
               Clear chat
             </Button>
           </div>
+
+          {!aiStatusLoading && !aiConfigured && (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              <p className="font-medium">AI assistant is not configured on the server</p>
+              <p className="mt-1 text-amber-900/90 dark:text-amber-200/95">
+                Add <code className="rounded bg-amber-100 px-1 font-mono text-xs dark:bg-amber-900/80">GROQ_API_KEY</code> (free tier),{' '}
+                <code className="rounded bg-amber-100 px-1 font-mono text-xs dark:bg-amber-900/80">OPENAI_API_KEY</code>, or{' '}
+                <code className="rounded bg-amber-100 px-1 font-mono text-xs dark:bg-amber-900/80">GEMINI_API_KEY</code> to{' '}
+                <code className="rounded bg-amber-100 px-1 font-mono text-xs dark:bg-amber-900/80">growe-backend/.env</code>, then restart the API.
+                See <code className="rounded bg-amber-100 px-1 font-mono text-xs dark:bg-amber-900/80">growe-backend/.env.example</code>.
+              </p>
+            </div>
+          )}
 
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
             {messages.length === 0 && !loading && (
@@ -104,7 +143,11 @@ export default function AIChatPage() {
             <div ref={bottomRef} />
           </div>
 
-          <ChatInput onSend={handleSend} disabled={loading} />
+          <ChatInput
+            onSend={handleSend}
+            disabled={loading || !aiConfigured || aiStatusLoading}
+            loading={loading}
+          />
         </div>
       </div>
     </div>

@@ -16,8 +16,6 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 import { isSmtpConfigured } from '../services/emailDelivery.service.js';
 import * as notificationModel from '../models/notification.model.js';
 import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
-import { smtpConfig } from '../config/smtp.js';
-
 const BCRYPT_ROUNDS = 12;
 
 const ACCESS_TOKEN_TTL = '15m';
@@ -58,46 +56,53 @@ const issueAuthResponse = async (res, user) => {
 };
 
 /**
- * Issue a fresh verification token and optional email after new signup or "resume" signup for unverified email.
+ * Send verification email first; only then replace DB tokens. If sending fails, leave existing tokens
+ * (resume flow) or caller rolls back the new user — avoids accounts with no way to verify.
  */
 async function issueRegistrationVerification(userId, { resumed }) {
-  await emailVerificationModel.deleteByUserId(userId);
   const user = await userModel.findById(userId);
+  if (!user) {
+    return {
+      payload: null,
+      emailSent: false,
+      isProduction: process.env.NODE_ENV === 'production',
+      emailSendError: new Error('User not found'),
+    };
+  }
+
   const token = generateVerificationToken();
   const expiresAt = getVerificationExpiryDate();
   const expiryLabel = getVerificationExpiryLabel();
-  await emailVerificationModel.create({
-    userId: user.id,
-    token,
-    expiresAt,
-  });
 
-  const base = smtpConfig.frontendUrl.replace(/\/$/, '');
-  const verificationUrl = `${base}/verify-email?token=${encodeURIComponent(token)}`;
-
-  let emailSent = false;
-  let emailSendError = null;
   try {
     await sendVerificationEmail({
       email: user.email,
       token,
       expiresIn: expiryLabel,
     });
-    emailSent = true;
   } catch (emailErr) {
-    emailSendError = emailErr;
     console.error('Verification email failed:', emailErr);
+    const isProduction = process.env.NODE_ENV === 'production';
+    return {
+      payload: null,
+      emailSent: false,
+      isProduction,
+      emailSendError: emailErr,
+    };
   }
 
+  await emailVerificationModel.deleteByUserId(userId);
+  await emailVerificationModel.create({
+    userId: user.id,
+    token,
+    expiresAt,
+  });
+
   const payload = {
-    message: emailSent
-      ? resumed
-        ? 'We sent a new verification link to your email.'
-        : 'We sent a verification link to your email.'
-      : resumed
-        ? 'Your account was updated. Complete verification using the options in the app.'
-        : 'Your account was created. Complete verification using the options in the app.',
-    emailSent,
+    message: resumed
+      ? 'We sent a new verification link to your email.'
+      : 'We sent a verification link to your email.',
+    emailSent: true,
     user: {
       id: user.id,
       email: user.email,
@@ -106,15 +111,17 @@ async function issueRegistrationVerification(userId, { resumed }) {
     },
   };
   const isProduction = process.env.NODE_ENV === 'production';
-  if (!isProduction) {
-    payload.verificationLink = verificationUrl;
-  }
-  if (!emailSent && !isProduction && emailSendError) {
-    payload.message =
-      'We could not send the verification email automatically. You can open the verification link below or request a new email.';
-  }
 
-  return { payload, emailSent, isProduction };
+  return { payload, emailSent: true, isProduction, emailSendError: null };
+}
+
+function registrationEmailUndelivered(result) {
+  const forceEmail =
+    process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
+  const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
+  if (result.emailSendError) return true;
+  if (!result.emailSent && mustDeliverEmail) return true;
+  return false;
 }
 
 export const register = async (req, res, next) => {
@@ -139,6 +146,7 @@ export const register = async (req, res, next) => {
         });
       }
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const previousPasswordHash = existing.password_hash;
       await userModel.updatePasswordHash(existing.id, passwordHash);
       if (existing.role_id !== role.id) {
         await userModel.updateRole(existing.id, role.id);
@@ -147,16 +155,17 @@ export const register = async (req, res, next) => {
         await userModel.updateProfile(existing.id, { displayName: name.trim() });
       }
       const result = await issueRegistrationVerification(existing.id, { resumed: true });
-      const forceEmail =
-        process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
-      const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
-      if (!result.emailSent && mustDeliverEmail) {
+      if (registrationEmailUndelivered(result)) {
+        await userModel.updatePasswordHash(existing.id, previousPasswordHash);
         return res.status(503).json({
           success: false,
-          error: 'Failed to send verification email. Please try again later or contact support.',
+          error:
+            result.emailSendError != null
+              ? 'Failed to send verification email. Your password was not updated. Try again later.'
+              : 'Failed to send verification email. Please try again later or contact support.',
           code: 'EMAIL_SEND_FAILED',
           details:
-            'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM for your provider. Check server logs for the underlying error.',
+            'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, RESEND_API_KEY / RESEND_FROM (Resend), or SMTP_* for your provider. Check server logs for the underlying error.',
         });
       }
       return res.status(201).json(result.payload);
@@ -172,16 +181,15 @@ export const register = async (req, res, next) => {
       await userModel.updateProfile(created.id, { displayName: name.trim() });
     }
     const result = await issueRegistrationVerification(created.id, { resumed: false });
-    const forceEmail =
-      process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
-    const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
-    if (!result.emailSent && mustDeliverEmail) {
+    if (registrationEmailUndelivered(result)) {
+      await emailVerificationModel.deleteByUserId(created.id);
+      await userModel.deleteById(created.id);
       return res.status(503).json({
         success: false,
-        error: 'Failed to send verification email. Please try again later or contact support.',
+        error: 'Failed to send verification email. No account was created. Try again later.',
         code: 'EMAIL_SEND_FAILED',
         details:
-          'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM for your provider. Check server logs for the underlying error.',
+          'Email delivery failed. Confirm FRONTEND_URL matches your live app URL, RESEND_API_KEY / RESEND_FROM (Resend), or SMTP_* for your provider. Check server logs for the underlying error.',
       });
     }
     return res.status(201).json(result.payload);
@@ -288,7 +296,13 @@ export const requestVerificationEmail = async (req, res, next) => {
       await sendVerificationEmail({ email: user.email, token, expiresIn: expiryLabel });
     } catch (emailErr) {
       console.error('Request verification email failed:', emailErr);
-      return res.status(503).json({ success: false, error: 'Could not send email. Check SMTP settings or try again later.' });
+      return res.status(503).json({
+        success: false,
+        error: 'Could not send email. Check SMTP settings or try again later.',
+        code: 'EMAIL_SEND_FAILED',
+        details:
+          'Email delivery failed. Confirm FRONTEND_URL and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM. Check server logs for the underlying error.',
+      });
     }
 
     return res.json(genericSuccess);
@@ -323,7 +337,13 @@ export const resendVerification = async (req, res, next) => {
       await sendVerificationEmail({ email: user.email, token, expiresIn: expiryLabel });
     } catch (emailErr) {
       console.error('Resend verification email failed:', emailErr);
-      return res.status(503).json({ success: false, error: 'Failed to send verification email. Try again later.' });
+      return res.status(503).json({
+        success: false,
+        error: 'Failed to send verification email. Try again later.',
+        code: 'EMAIL_SEND_FAILED',
+        details:
+          'Email delivery failed. Confirm FRONTEND_URL and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM. Check server logs for the underlying error.',
+      });
     }
 
     res.json({ success: true, message: 'Verification email sent. Check your inbox.' });
@@ -376,7 +396,9 @@ export const forgotPassword = async (req, res, next) => {
 
     await passwordResetModel.deleteExpired();
     const user = await userModel.findByEmail(email);
-    if (!user || !user.is_active) return res.json(generic);
+    if (!user || !user.is_active) {
+      return res.json(generic);
+    }
 
     // allow reset for local accounts only
     if (user.provider && user.provider !== 'local' && !user.password_hash) {
@@ -391,8 +413,15 @@ export const forgotPassword = async (req, res, next) => {
     try {
       await sendPasswordResetEmail({ email: user.email, token, expiresIn: '1 hour' });
     } catch (e) {
-      console.error('Password reset email failed:', e);
-      return res.status(503).json({ success: false, error: 'Could not send email. Try again later.' });
+      console.error('Password reset email failed:', e?.cause || e);
+      const hint =
+        'Resend test senders (e.g. onboarding@resend.dev) only deliver to your own Resend account email until you verify a domain at https://resend.com/domains and set FROM to an address on that domain.';
+      return res.status(503).json({
+        success: false,
+        error: 'Could not send email. Try again later.',
+        code: 'EMAIL_SEND_FAILED',
+        details: [e?.message && String(e.message), hint].filter(Boolean).join(' '),
+      });
     }
     try {
       await notificationModel.create({
@@ -476,6 +505,14 @@ export const googleLogin = async (req, res, next) => {
           displayName: name,
         });
       }
+    }
+
+    if (!user) {
+      return res.status(500).json({
+        success: false,
+        error: 'Could not create or load your account after Google sign-in. Try again or register with email.',
+        code: 'GOOGLE_USER_MISSING',
+      });
     }
 
     const resp = await issueAuthResponse(res, user);

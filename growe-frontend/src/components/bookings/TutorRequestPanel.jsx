@@ -14,7 +14,7 @@ export default function TutorRequestPanel({ bookings, onAccept, onDecline, busyI
   const pending = useMemo(
     () =>
       (Array.isArray(bookings) ? bookings : []).filter((b) =>
-        ['waiting_tutor_confirmation'].includes(b.status)
+        ['pending', 'waiting_tutor_confirmation'].includes(b.status)
       ),
     [bookings]
   );

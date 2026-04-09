@@ -1,3 +1,4 @@
+import './bootstrap-env.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
@@ -5,7 +6,6 @@ import { dirname, join } from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 
 import { issueCsrfToken, validateCsrf } from './middleware/csrf.middleware.js';
 import authRoutes from './routes/auth.routes.js';
@@ -22,8 +22,6 @@ import usersRoutes from './routes/users.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { apiEnvelope } from './middleware/apiEnvelope.middleware.js';
-
-dotenv.config();
 
 const app = express();
 

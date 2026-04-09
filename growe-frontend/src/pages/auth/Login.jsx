@@ -3,9 +3,11 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import Card from '../../components/ui/Card';
+import AuthLayout from '../../components/auth/AuthLayout';
+import AuthCard from '../../components/auth/AuthCard';
 import Button from '../../components/ui/Button';
-import api from '../../services/api';
+import api, { invalidateCsrfToken } from '../../services/api';
+import { authLabel, authInput } from '../../components/auth/authFieldStyles';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -39,79 +41,111 @@ export default function Login() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-16 px-4">
-      <h1 className="text-2xl font-bold text-center text-slate-900 dark:text-slate-100 mb-6">Login to GROWE</h1>
-      <Card>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <AuthLayout headline="Welcome back">
+      <AuthCard>
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           {error && (
             <div
-              className="p-3 rounded-2xl text-sm bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200"
               role="alert"
             >
               {error}
             </div>
           )}
+
           <div>
-            <label className="block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Email</label>
+            <label htmlFor="login-email" className={authLabel}>
+              Email
+            </label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-growe/50 focus:border-growe transition-all duration-200"
+              className={authInput}
               required
               autoComplete="email"
+              placeholder="you@school.edu"
             />
           </div>
+
           <div>
-            <label className="block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Password</label>
+            <label htmlFor="login-password" className={authLabel}>
+              Password
+            </label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-growe/50 focus:border-growe transition-all duration-200"
+              className={authInput}
               required
               autoComplete="current-password"
+              placeholder="••••••••"
             />
           </div>
+
           <Button type="submit" className="w-full" loading={loading} disabled={loading}>
-            Login
+            Sign in
           </Button>
-          <div className="flex justify-center">
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200 dark:border-slate-600" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wide">
+              <span className="bg-white px-2 text-slate-500 dark:bg-white dark:text-slate-500">Or continue with</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center gap-2">
             {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
-              <GoogleLogin
-                text="signin_with"
-                onSuccess={async (cred) => {
-                  try {
-                    const { data } = await api.post('/auth/google', { idToken: cred.credential });
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
-                    navigate(from, { replace: true });
-                  } catch (err) {
-                    toast.error(err.response?.data?.error || 'Google login failed');
-                  }
-                }}
-                onError={() => toast.error('Google login failed')}
-              />
+              <div className="flex w-full justify-center [&>div]:w-full [&_iframe]:!mx-auto">
+                <GoogleLogin
+                  text="signin_with"
+                  width="100%"
+                  onSuccess={async (cred) => {
+                    try {
+                      const { data } = await api.post('/auth/google', { idToken: cred.credential });
+                      localStorage.setItem('token', data.token);
+                      localStorage.setItem('user', JSON.stringify(data.user));
+                      invalidateCsrfToken();
+                      window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
+                      navigate(from, { replace: true });
+                    } catch (err) {
+                      toast.error(err.response?.data?.error || 'Google login failed');
+                    }
+                  }}
+                  onError={() => toast.error('Google login failed')}
+                />
+              </div>
             ) : (
-              <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-                Google sign-in is not configured. Set <span className="font-mono">VITE_GOOGLE_CLIENT_ID</span> and restart the frontend.
+              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                Google sign-in is not configured. Set <span className="font-mono text-slate-600 dark:text-slate-300">VITE_GOOGLE_CLIENT_ID</span> and restart the frontend.
               </p>
             )}
           </div>
+
           <div className="text-center">
-            <Link to="/forgot-password" className="text-sm text-slate-600 dark:text-slate-400 hover:underline">
+            <Link
+              to="/forgot-password"
+              className="text-sm font-medium text-slate-600 underline-offset-4 hover:text-growe-dark hover:underline dark:text-slate-400 dark:hover:text-growe"
+            >
               Forgot password?
             </Link>
           </div>
-          <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+
+          <p className="border-t border-slate-200 pt-5 text-center text-sm text-slate-600 dark:border-slate-600 dark:text-slate-400">
             Don&apos;t have an account?{' '}
-            <Link to="/register" className="text-slate-800 dark:text-slate-200 font-medium hover:underline">
-              Register
+            <Link
+              to="/register"
+              className="font-semibold text-growe-dark underline-offset-4 hover:underline dark:text-growe"
+            >
+              Create one
             </Link>
           </p>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   );
 }

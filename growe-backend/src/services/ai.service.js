@@ -1,6 +1,9 @@
 /**
- * Server-side AI chat using Gemini (preferred) or OpenAI. Keys only in env — never exposed to clients.
+ * Server-side AI chat: configurable provider order (default Gemini → Groq → OpenAI).
+ * Keys only in env — never exposed to clients.
  */
+
+import { envKey, getAiProviderOrder, getConfiguredAiProviders } from '../config/aiEnv.js';
 
 const SYSTEM_PROMPT = `You are a helpful academic assistant for students and tutors using GROWE, a study collaboration platform.
 Help with study tips, time management, explaining concepts at a high level, and using the app (groups, messages, bookings, meetings).
@@ -9,11 +12,18 @@ If asked for medical, legal, or professional advice beyond general study help, s
 
 const MAX_REPLY_CHARS = 8000;
 
+function geminiQuotaError(message) {
+  const err = new Error(message);
+  err.code = 'AI_QUOTA_EXCEEDED';
+  err.statusCode = 429;
+  return err;
+}
+
 async function chatWithGemini(userMessage) {
-  const key = process.env.GEMINI_API_KEY;
+  const key = envKey('GEMINI_API_KEY');
   if (!key) return null;
 
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = envKey('GEMINI_MODEL') || 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
   const body = {
@@ -25,27 +35,61 @@ async function chatWithGemini(userMessage) {
     },
   };
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const postOnce = () =>
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  const data = await res.json().catch(() => ({}));
+  let res = await postOnce();
+  let data = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    const err = data?.error?.message || data?.error || res.statusText;
-    throw new Error(err || 'Gemini request failed');
+    const msg0 = String(data?.error?.message || data?.error || '');
+    const quotaZero = /limit:\s*0/i.test(msg0);
+    const retryMs = msg0.match(/retry in ([\d.]+)\s*ms/i);
+    if (res.status === 429 && !quotaZero && retryMs) {
+      const wait = Math.min(10000, Math.max(100, parseFloat(retryMs[1]) + 100));
+      await new Promise((r) => setTimeout(r, wait));
+      res = await postOnce();
+      data = await res.json().catch(() => ({}));
+    }
+  }
+
+  if (!res.ok) {
+    const raw = data?.error?.message || data?.error || res.statusText;
+    const msgStr = String(raw || 'Gemini request failed');
+
+    if (
+      res.status === 429 ||
+      /quota exceeded|RESOURCE_EXHAUSTED|rate limit|generativelanguage\.googleapis\.com/i.test(msgStr)
+    ) {
+      const short =
+        'Gemini quota or rate limit reached. If you see "limit: 0", enable billing or use a paid plan in Google AI Studio / Cloud Console, or set GROQ_API_KEY (free tier at console.groq.com) or OPENAI_API_KEY in the server .env as a fallback. Details: https://ai.google.dev/gemini-api/docs/rate-limits';
+      throw geminiQuotaError(short);
+    }
+
+    throw new Error(msgStr);
+  }
+
+  if (data?.promptFeedback?.blockReason) {
+    return null;
   }
 
   const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
-  return text.trim() || null;
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed;
 }
 
 async function chatWithOpenAI(userMessage) {
-  const key = process.env.OPENAI_API_KEY;
+  const key = envKey('OPENAI_API_KEY');
   if (!key) return null;
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const model = envKey('OPENAI_MODEL') || 'gpt-4o-mini';
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -73,6 +117,44 @@ async function chatWithOpenAI(userMessage) {
   return text.trim() || null;
 }
 
+async function chatWithGroq(userMessage) {
+  const key = envKey('GROQ_API_KEY');
+  if (!key) return null;
+
+  const model = envKey('GROQ_MODEL') || 'llama-3.3-70b-versatile';
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage.trim() },
+      ],
+      max_tokens: 2048,
+      temperature: 0.7,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = data?.error?.message || data?.error || res.statusText;
+    throw new Error(err || 'Groq request failed');
+  }
+
+  const text = data?.choices?.[0]?.message?.content || '';
+  return text.trim() || null;
+}
+
+const callers = {
+  gemini: chatWithGemini,
+  groq: chatWithGroq,
+  openai: chatWithOpenAI,
+};
+
 /**
  * @param {string} message
  * @returns {Promise<string>}
@@ -82,10 +164,10 @@ export async function generateReply(message) {
     throw new Error('Message is required');
   }
 
-  const hasGemini = !!process.env.GEMINI_API_KEY;
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const configured = getConfiguredAiProviders();
+  const order = getAiProviderOrder();
 
-  if (!hasGemini && !hasOpenAI) {
+  if (order.length === 0) {
     const err = new Error('AI service is not configured');
     err.statusCode = 503;
     err.code = 'AI_NOT_CONFIGURED';
@@ -95,23 +177,24 @@ export async function generateReply(message) {
   let reply = null;
   let lastErr = null;
 
-  if (hasGemini) {
+  for (const name of order) {
+    const fn = callers[name];
+    if (!fn) continue;
     try {
-      reply = await chatWithGemini(message);
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  if (!reply && hasOpenAI) {
-    try {
-      reply = await chatWithOpenAI(message);
+      reply = await fn(message);
+      if (reply) break;
     } catch (e) {
       lastErr = e;
     }
   }
 
   if (!reply) {
+    if (lastErr?.code === 'AI_QUOTA_EXCEEDED') {
+      if (!configured.groq && !configured.openai) {
+        lastErr.message = `${lastErr.message} This server has no GROQ_API_KEY (free at console.groq.com) or OPENAI_API_KEY — add one to growe-backend/.env and restart when Gemini is unavailable.`;
+      }
+      throw lastErr;
+    }
     const err = new Error(lastErr?.message || 'Could not generate a reply');
     err.statusCode = 502;
     err.code = 'AI_UPSTREAM_ERROR';

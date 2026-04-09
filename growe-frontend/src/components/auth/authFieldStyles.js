@@ -1,0 +1,4 @@
+export const authLabel = 'mb-1.5 block text-left text-sm font-medium text-slate-700 dark:text-slate-300';
+/** Auth shell is always light-themed — keep fields solid white even when `html` has `dark` (global theme). */
+export const authInput =
+  'auth-field-input w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-growe focus:outline-none focus:ring-2 focus:ring-growe/30 focus:ring-offset-2 focus:ring-offset-white dark:border-slate-300 dark:bg-white dark:text-slate-900 dark:placeholder:text-slate-400 dark:focus:ring-offset-white';

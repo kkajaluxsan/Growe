@@ -11,6 +11,15 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Login / register: keep autofill from painting fields gray */
+  .auth-field-input:-webkit-autofill,
+  .auth-field-input:-webkit-autofill:hover,
+  .auth-field-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: rgb(15 23 42);
+    box-shadow: 0 0 0 1000px #ffffff inset;
+    transition: background-color 99999s ease-out 0s;
+  }
 }
 
 @layer components {
@@ -35,5 +44,25 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-auth-blob-1,
+  .animate-auth-blob-2,
+  .animate-auth-blob-3,
+  .animate-auth-aurora,
+  .animate-auth-sweep,
+  .animate-auth-watermark,
+  .animate-auth-brand-glow,
+  .animate-auth-icon-float-1,
+  .animate-auth-icon-float-2,
+  .animate-auth-icon-float-3,
+  .animate-auth-icon-float-4,
+  .animate-auth-dot-1,
+  .animate-auth-dot-2,
+  .animate-auth-dot-3,
+  .animate-auth-ping-soft {
+    animation: none !important;
   }
 }

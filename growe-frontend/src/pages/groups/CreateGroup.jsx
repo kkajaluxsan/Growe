@@ -5,13 +5,17 @@ import { useToast } from '../../context/ToastContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import UserSearchDropdown from '../../components/common/UserSearchDropdown';
+import TutorSelectionSection from '../../components/groups/TutorSelectionSection';
 
 export default function CreateGroup() {
   const { toast } = useToast();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [sessionSubject, setSessionSubject] = useState('');
   const [maxMembers, setMaxMembers] = useState(10);
   const [selectedMembers, setSelectedMembers] = useState([]);
+  const [selectedTutor, setSelectedTutor] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -74,9 +78,34 @@ export default function CreateGroup() {
       );
       return;
     }
+    if (selectedTutor && !selectedSlot) {
+      setError('Choose a session time slot before inviting a tutor.');
+      return;
+    }
+    if (selectedSlot?.start && new Date(selectedSlot.start).getTime() <= Date.now()) {
+      setError('Session time must be in the future. Pick another date or slot.');
+      return;
+    }
+
+    const tutorInvite =
+      selectedTutor && selectedSlot
+        ? {
+            tutorUserId: selectedTutor.tutorUserId,
+            availabilityId: selectedTutor.availabilityId,
+            slotStart: selectedSlot.start,
+            slotEnd: selectedSlot.end,
+            subject: sessionSubject.trim() || undefined,
+          }
+        : undefined;
+
     setLoading(true);
     try {
-      const { data: group } = await api.post('/groups', { name, description, maxMembers });
+      const { data: group } = await api.post('/groups', {
+        name,
+        description,
+        maxMembers,
+        ...(tutorInvite ? { tutorInvite } : {}),
+      });
       const groupId = group?.id;
       if (!groupId) {
         setError('Group created but response was unexpected.');
@@ -99,7 +128,9 @@ export default function CreateGroup() {
         }
       }
 
-      if (selectedMembers.length === 0) {
+      if (tutorInvite) {
+        toast.success('Group created. Tutor request sent — you’ll see pending approval on the group page.');
+      } else if (selectedMembers.length === 0) {
         toast.success('Group created.');
       } else if (failed.length === 0) {
         toast.success(`Group created and ${added} ${added === 1 ? 'person' : 'people'} added.`);
@@ -117,13 +148,16 @@ export default function CreateGroup() {
   };
 
   return (
-    <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-4">Create study group</h1>
-      <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-        Set a name and capacity, then search for verified users to add as members right away.
-      </p>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Create study group</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Set a name and capacity, optionally schedule a session and invite a tutor (request-based), and add members.
+        </p>
+      </div>
+      <form id="create-group-form" onSubmit={handleSubmit} className="space-y-6">
       <Card className="p-6">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-5">
           {error && (
             <div className="p-3 rounded-lg bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200 text-sm">
               {error}
@@ -155,6 +189,25 @@ export default function CreateGroup() {
             />
           </div>
           <div>
+            <label
+              htmlFor="session-subject"
+              className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
+            >
+              Subject / focus (optional)
+            </label>
+            <input
+              id="session-subject"
+              type="text"
+              value={sessionSubject}
+              onChange={(e) => setSessionSubject(e.target.value)}
+              placeholder="e.g. Calculus, essay writing…"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Used to prioritize tutors who list this topic. Leave empty for any subject.
+            </p>
+          </div>
+          <div>
             <label htmlFor="max-m" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Max members (total)
             </label>
@@ -173,6 +226,12 @@ export default function CreateGroup() {
               {selectedMembers.length > 0 ? ' (invites below)' : ''}.
             </p>
           </div>
+
+          <TutorSelectionSection
+            subject={sessionSubject}
+            onTutorChange={setSelectedTutor}
+            onSlotChange={setSelectedSlot}
+          />
 
           <div>
             <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -208,17 +267,18 @@ export default function CreateGroup() {
               </ul>
             )}
           </div>
+        </div>
+        </Card>
 
-          <div className="pt-2 flex gap-3">
-            <Button type="submit" loading={loading} disabled={loading}>
-              {loading ? 'Creating…' : 'Create group'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => navigate(-1)} disabled={loading}>
-              Cancel
-            </Button>
-          </div>
+        <div className="pt-2 flex gap-3">
+          <Button type="submit" loading={loading} disabled={loading}>
+            {loading ? 'Creating…' : 'Create group'}
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => navigate(-1)} disabled={loading}>
+            Cancel
+          </Button>
+        </div>
         </form>
-      </Card>
     </div>
   );
 }

@@ -52,6 +52,19 @@ export function bookingSessionReminderTemplate({ startFormatted, tutorEmail }) {
   };
 }
 
+export function tutorSessionReminderTemplate({ startFormatted, studentEmail }) {
+  const inner = `
+    <h2>Session reminder</h2>
+    <p>You have a tutoring session at <strong>${escapeHtml(startFormatted)}</strong>.</p>
+    ${studentEmail ? `<p>Student: ${escapeHtml(studentEmail)}</p>` : ''}
+    <div class="footer"><p>GROWE</p></div>`;
+  return {
+    subject: `Reminder: tutoring session at ${startFormatted}`,
+    html: baseHtml(inner),
+    text: `Reminder: tutoring session at ${startFormatted}.${studentEmail ? ` Student: ${studentEmail}.` : ''}`,
+  };
+}
+
 export function bookingConfirmationTemplate({ userName, role, otherPartyEmail, startFormatted, status }) {
   const name = userName || 'there';
   const bookingsUrl = `${smtpConfig.frontendUrl.replace(/\/$/, '')}/tutors`;

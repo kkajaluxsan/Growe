@@ -68,6 +68,7 @@ export async function createNotification({
       title,
       message,
       createdAt: row.created_at,
+      metadata,
     });
   }
 
@@ -247,6 +248,52 @@ export async function notifyGroupMemberAdded({ inviteeUserId, groupId, groupName
   });
 }
 
+export async function notifyGroupTutorInviteRequested({
+  tutorUserId,
+  groupName,
+  groupId,
+  requesterDisplayName,
+  slotStart,
+}) {
+  const start = slotStart ? new Date(slotStart) : null;
+  const formatted =
+    start && !Number.isNaN(start.getTime())
+      ? start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : '';
+  return createNotification({
+    userId: tutorUserId,
+    type: TYPES.GROUP,
+    title: 'Group tutor request',
+    message: `${requesterDisplayName || 'A student'} asked you to tutor "${groupName || 'a study group'}"${formatted ? ` at ${formatted}` : ''}. Review pending invites to accept or decline.`,
+    metadata: { groupId, event: 'group_tutor_invite' },
+  });
+}
+
+export async function notifyGroupTutorInviteRejected({ studentUserId, groupName, tutorDisplayName }) {
+  return createNotification({
+    userId: studentUserId,
+    type: TYPES.GROUP,
+    title: 'Tutor declined',
+    message: `${tutorDisplayName || 'The tutor'} declined to join "${groupName || 'your group'}" as tutor. Your group continues without a tutor.`,
+    metadata: { event: 'group_tutor_invite_rejected' },
+  });
+}
+
+export async function notifyGroupTutorInviteAcceptedStudent({
+  studentUserId,
+  groupName,
+  tutorDisplayName,
+  meetingId,
+}) {
+  return createNotification({
+    userId: studentUserId,
+    type: TYPES.GROUP,
+    title: 'Tutor accepted',
+    message: `${tutorDisplayName || 'Your tutor'} accepted your request for "${groupName || 'your group'}". The session is on the calendar.`,
+    metadata: { event: 'group_tutor_invite_accepted', meetingId },
+  });
+}
+
 export async function notifyGroupInviteLinkCreated({ creatorUserId, groupName, inviteUrl }) {
   const user = await userModel.findById(creatorUserId);
   if (!user?.email) return null;
@@ -282,6 +329,38 @@ export async function notifyBookingReminderInApp({ userId, email, startTime, tut
     metadata: { event: 'booking_reminder' },
     email,
     emailPayload: { subject, html, text },
+  });
+}
+
+export async function notifyTutorBookingReminderInApp({ tutorUserId, email, startTime, studentEmail }) {
+  const start = new Date(startTime);
+  const formatted = start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const { subject, html, text } = templates.tutorSessionReminderTemplate({
+    startFormatted: formatted,
+    studentEmail,
+  });
+  return createNotification({
+    userId: tutorUserId,
+    type: TYPES.BOOKING,
+    title: 'Session reminder',
+    message: `You tutor at ${formatted}` + (studentEmail ? ` — Student: ${studentEmail}` : ''),
+    metadata: { event: 'booking_reminder_tutor' },
+    email,
+    emailPayload: { subject, html, text },
+  });
+}
+
+/** In-app + socket only (no email) — desktop alert handled on the client from socket metadata. */
+export async function notifyBookingImminentInApp({ userId, startTime, role, otherPartyEmail, bookingId }) {
+  const start = new Date(startTime);
+  const formatted = start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const who = role === 'tutor' ? `Student: ${otherPartyEmail}` : `Tutor: ${otherPartyEmail}`;
+  return createNotification({
+    userId,
+    type: TYPES.BOOKING,
+    title: 'Session starting soon',
+    message: `Starts at ${formatted} (~10 min) — ${who}`,
+    metadata: { event: 'booking_imminent', bookingId },
   });
 }
 

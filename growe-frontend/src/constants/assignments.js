@@ -1,4 +1,7 @@
-/** API expects uppercase labels (Joi schemas). */
+/** API expects uppercase labels (Joi schemas). Matches growe-backend assignment.schema.js */
+
+export const ASSIGNMENT_TITLE_MAX = 255;
+export const ASSIGNMENT_DESCRIPTION_MAX = 10000;
 
 export const ASSIGNMENT_STATUSES = [
   { value: 'PENDING', label: 'Pending' },
@@ -62,6 +65,50 @@ export function isDeadlineValidOnUpdate(deadlineLocalString, initialDeadlineLoca
   if (!deadlineLocalString) return false;
   if (deadlineLocalString === initialDeadlineLocal) return true;
   return isDeadlineInFuture(deadlineLocalString);
+}
+
+/** Client-side validation aligned with Joi (create). */
+export function getCreateAssignmentErrors({ title, description, deadline }) {
+  const e = {};
+  const t = typeof title === 'string' ? title.trim() : '';
+  const d = typeof description === 'string' ? description.trim() : '';
+  if (!t) e.title = 'Title is required';
+  else if (t.length > ASSIGNMENT_TITLE_MAX) e.title = `Title must be at most ${ASSIGNMENT_TITLE_MAX} characters`;
+  if (!d) e.description = 'Description is required';
+  else if (d.length > ASSIGNMENT_DESCRIPTION_MAX) {
+    e.description = `Description must be at most ${ASSIGNMENT_DESCRIPTION_MAX} characters`;
+  }
+  if (!deadline) e.deadline = 'Deadline is required';
+  else if (!isDeadlineInFuture(deadline)) e.deadline = 'Deadline must be after the current date and time';
+  return e;
+}
+
+/** Client-side validation aligned with Joi (update). */
+export function getEditAssignmentErrors({ title, description, deadline, initialDeadlineLocal }) {
+  const e = {};
+  const t = typeof title === 'string' ? title.trim() : '';
+  const d = typeof description === 'string' ? description.trim() : '';
+  if (!t) e.title = 'Title is required';
+  else if (t.length > ASSIGNMENT_TITLE_MAX) e.title = `Title must be at most ${ASSIGNMENT_TITLE_MAX} characters`;
+  if (!d) e.description = 'Description is required';
+  else if (d.length > ASSIGNMENT_DESCRIPTION_MAX) {
+    e.description = `Description must be at most ${ASSIGNMENT_DESCRIPTION_MAX} characters`;
+  }
+  if (!deadline) e.deadline = 'Deadline is required';
+  else if (!isDeadlineValidOnUpdate(deadline, initialDeadlineLocal)) {
+    e.deadline = 'When changing the deadline, pick a future date and time';
+  }
+  return e;
+}
+
+export function formatAssignmentStatusLabel(status) {
+  if (!status || typeof status !== 'string') return '';
+  return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function listFilterDateRangeInvalid(deadlineAfter, deadlineBefore) {
+  if (!deadlineAfter || !deadlineBefore) return false;
+  return deadlineAfter > deadlineBefore;
 }
 
 export function formatAssignmentApiError(err) {

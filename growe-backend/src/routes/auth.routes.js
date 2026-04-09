@@ -18,10 +18,27 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many attempts. Please try again later.' },
 });
 
-const resendLimiter = rateLimit({
+/** Separate instances so each route has its own per-IP budget (shared one limiter counted all three together). */
+const requestVerificationEmailLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   message: { success: false, error: 'Too many resend requests. Try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const resendVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: 'Too many resend requests. Try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: 'Too many password reset requests. Try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 router.post('/register', authLimiter, validateRegister, authController.register);
@@ -31,15 +48,15 @@ router.post('/logout', authController.logout);
 router.get('/verify-email', authController.verifyEmail);
 router.post(
   '/request-verification-email',
-  resendLimiter,
+  requestVerificationEmailLimiter,
   validateRequestVerificationEmail,
   authController.requestVerificationEmail
 );
-router.post('/resend-verification', authenticate, resendLimiter, authController.resendVerification);
+router.post('/resend-verification', authenticate, resendVerificationLimiter, authController.resendVerification);
 router.post('/refresh-token', authController.refreshToken);
 // Alias for clients expecting `/auth/refresh`
 router.post('/refresh', authController.refreshToken);
-router.post('/forgot-password', resendLimiter, authController.forgotPassword);
+router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 
 router.get('/me', authenticate, authController.getProfile);

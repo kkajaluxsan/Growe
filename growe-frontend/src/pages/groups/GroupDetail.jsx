@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Card from '../../components/ui/Card';
@@ -7,6 +7,7 @@ import Modal from '../../components/ui/Modal';
 import ShareButton from '../../components/ui/ShareButton';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { localDateInputMin } from '../../utils/dateInput';
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -21,7 +22,7 @@ export default function GroupDetail() {
   const [scheduleDate, setScheduleDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return localDateInputMin(d);
   });
   const [availableTutors, setAvailableTutors] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -33,6 +34,25 @@ export default function GroupDetail() {
   const [memberResults, setMemberResults] = useState([]);
   const [memberSearchLoading, setMemberSearchLoading] = useState(false);
   const [addingMemberId, setAddingMemberId] = useState(null);
+  const [tutorInvite, setTutorInvite] = useState(null);
+  const hadPendingTutorInvite = useRef(false);
+
+  const loadTutorInvite = useCallback(() => {
+    api
+      .get(`/groups/${id}/tutor-invite`, { skipGlobalErrorToast: true })
+      .then(({ data }) => setTutorInvite(data || null))
+      .catch(() => setTutorInvite(null));
+  }, [id]);
+
+  useEffect(() => {
+    loadTutorInvite();
+  }, [loadTutorInvite]);
+
+  useEffect(() => {
+    if (!tutorInvite?.id) return undefined;
+    const timer = setInterval(loadTutorInvite, 5000);
+    return () => clearInterval(timer);
+  }, [tutorInvite?.id, loadTutorInvite]);
 
   useEffect(() => {
     api.get(`/groups/${id}`)
@@ -54,6 +74,13 @@ export default function GroupDetail() {
       .then(({ data }) => setMembers(data))
       .catch((err) => toast.error(err.response?.data?.error || 'Failed to load group members'));
   }, [id, toast]);
+
+  useEffect(() => {
+    if (hadPendingTutorInvite.current && !tutorInvite) {
+      refreshMembers();
+    }
+    hadPendingTutorInvite.current = !!tutorInvite;
+  }, [tutorInvite, refreshMembers]);
 
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
@@ -167,6 +194,10 @@ export default function GroupDetail() {
   };
 
   const handleScheduleWithTutor = (tutor, slot) => {
+    if (slot?.startTime && new Date(slot.startTime).getTime() <= Date.now()) {
+      toast.error('This time slot is in the past. Pick another slot.');
+      return;
+    }
     setCreating(true);
     api.post('/meetings', {
       groupId: id,
@@ -208,6 +239,22 @@ export default function GroupDetail() {
         />
       </div>
       {error && <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</div>}
+      {tutorInvite && (
+        <div className="mb-4 rounded-xl border border-amber-200/90 bg-amber-50 dark:bg-amber-950/35 dark:border-amber-800 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+          <p className="font-semibold">Pending tutor approval</p>
+          <p className="mt-1 text-amber-900/90 dark:text-amber-200/95">
+            We sent a request to{' '}
+            <span className="font-medium">{tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'the tutor'}</span>
+            {tutorInvite.slot_start
+              ? ` for ${new Date(tutorInvite.slot_start).toLocaleString(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}`
+              : ''}
+            . The group remains student-only until they accept. You’ll get a notification when they respond.
+          </p>
+        </div>
+      )}
       <p className="text-slate-600 dark:text-slate-400 mb-6">{group.description || 'No description'}</p>
       <div className="flex flex-wrap gap-3 mb-6">
         {isCreator && (
@@ -301,7 +348,7 @@ export default function GroupDetail() {
               type="date"
               value={scheduleDate}
               onChange={(e) => setScheduleDate(e.target.value)}
-              min={new Date().toISOString().slice(0, 10)}
+              min={localDateInputMin()}
               className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
             />
           </div>
