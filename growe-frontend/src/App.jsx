@@ -45,7 +45,7 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="groups" element={<ProtectedRoute requireVerified><GroupList /></ProtectedRoute>} />
         <Route path="groups/join" element={<ProtectedRoute requireVerified><GroupJoin /></ProtectedRoute>} />
-        <Route path="groups/new" element={<ProtectedRoute requireVerified roles={['student', 'tutor']}><CreateGroup /></ProtectedRoute>} />
+        <Route path="groups/new" element={<ProtectedRoute requireVerified><CreateGroup /></ProtectedRoute>} />
         <Route path="groups/:id" element={<ProtectedRoute requireVerified><GroupDetail /></ProtectedRoute>} />
         <Route path="assignments" element={<ProtectedRoute requireVerified><AssignmentList /></ProtectedRoute>} />
         <Route path="assignments/new" element={<ProtectedRoute requireVerified><CreateAssignment /></ProtectedRoute>} />

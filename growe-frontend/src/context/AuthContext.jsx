@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import api, { invalidateCsrfToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -73,17 +73,22 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
+    invalidateCsrfToken();
     return data;
   };
 
   const register = async (email, password, roleName) => {
-    const { data } = await api.post('/auth/register', { email, password, roleName });
+    const { data } = await api.post(
+      '/auth/register',
+      { email, password, roleName },
+      { skipGlobalErrorToast: true }
+    );
     return data;
   };
 
   /** Request verification email without being logged in (uses email only). */
   const requestVerificationEmail = async (email) => {
-    const { data } = await api.post('/auth/request-verification-email', { email });
+    const { data } = await api.post('/auth/request-verification-email', { email }, { skipGlobalErrorToast: true });
     return data;
   };
 
@@ -92,6 +97,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+    invalidateCsrfToken();
   };
 
   const refreshUser = async () => {

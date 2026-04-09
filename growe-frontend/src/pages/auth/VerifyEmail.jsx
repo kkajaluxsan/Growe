@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -31,10 +32,15 @@ export default function VerifyEmail() {
       setStatus('error');
       setMessage('No verification token was provided. Open the full link from your email, or request a new one below.');
       setCode('TOKEN_MISSING');
-      return;
+      return undefined;
     }
+
+    // React 18 StrictMode runs this effect twice in dev; without abort, the first request
+    // verifies and deletes the token and the second shows "invalid or expired".
+    const ac = new AbortController();
+
     api
-      .get(`/auth/verify-email?token=${encodeURIComponent(token)}`)
+      .get(`/auth/verify-email?token=${encodeURIComponent(token)}`, { signal: ac.signal })
       .then(async () => {
         setStatus('success');
         setMessage('Your email is verified. You can now log in.');
@@ -47,10 +53,16 @@ export default function VerifyEmail() {
         }
       })
       .catch((err) => {
+        if (axios.isCancel(err) || err.code === 'ERR_CANCELED' || err.name === 'CanceledError') {
+          return;
+        }
         setStatus('error');
         setMessage(err.response?.data?.error || 'Verification failed.');
         setCode(err.response?.data?.code || '');
       });
+
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-verify when token changes; refreshUser is not stable across renders
   }, [token]);
 
   const handleResend = async (e) => {

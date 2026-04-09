@@ -1,4 +1,5 @@
 import * as tutorModel from '../models/tutor.model.js';
+import * as groupTutorInviteModel from '../models/groupTutorInvite.model.js';
 import * as availabilityService from '../services/availability.service.js';
 
 export const createProfile = async (req, res, next) => {
@@ -119,6 +120,9 @@ export const getAvailableSlots = async (req, res, next) => {
     });
     res.json(slots);
   } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     next(err);
   }
 };
@@ -147,6 +151,37 @@ export const listTutors = async (req, res, next) => {
       offset: parseInt(req.query.offset, 10) || 0,
     });
     res.json(tutors);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** For group creation: tutors free at an exact slot (start/end ISO). */
+export const getAvailableForGroupSlot = async (req, res, next) => {
+  try {
+    const { start, end, subject, q } = req.query;
+    const tutors = await availabilityService.getAvailableTutorsForSlot({
+      startISO: typeof start === 'string' ? start : '',
+      endISO: typeof end === 'string' ? end : '',
+      subject: typeof subject === 'string' ? subject : '',
+      q: typeof q === 'string' ? q : '',
+    });
+    res.json(tutors);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+};
+
+/** Pending group tutor invites for the logged-in tutor. */
+export const listPendingGroupInvites = async (req, res, next) => {
+  try {
+    const rows = await groupTutorInviteModel.listPendingForTutor(req.user.id, {
+      limit: Math.min(parseInt(req.query.limit, 10) || 20, 50),
+    });
+    res.json(rows);
   } catch (err) {
     next(err);
   }

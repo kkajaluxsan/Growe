@@ -1,8 +1,46 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
 
+function parseNotificationMetadata(n) {
+  const m = n?.metadata;
+  if (m == null) return {};
+  if (typeof m === 'string') {
+    try {
+      return JSON.parse(m);
+    } catch {
+      return {};
+    }
+  }
+  return typeof m === 'object' ? m : {};
+}
+
+/** Returns a client path to open for this notification, or null if none. */
+function getNotificationPath(n) {
+  const meta = parseNotificationMetadata(n);
+  const t = n?.type;
+
+  if (t === 'assignment' && meta.assignmentId) {
+    return `/assignments/${meta.assignmentId}`;
+  }
+  if (t === 'booking') {
+    return '/tutors';
+  }
+  if (t === 'meeting' && meta.meetingId) {
+    return `/meetings/${meta.meetingId}`;
+  }
+  if (t === 'group') {
+    if (meta.groupId) return `/groups/${meta.groupId}`;
+    if (meta.meetingId) return `/meetings/${meta.meetingId}`;
+    if (meta.event === 'group_tutor_invite_rejected') return '/groups';
+  }
+
+  return null;
+}
+
 export default function NotificationBell() {
+  const navigate = useNavigate();
   const { socket } = useSocket();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -65,6 +103,17 @@ export default function NotificationBell() {
     }
   };
 
+  const handleItemClick = async (n) => {
+    const path = getNotificationPath(n);
+    if (!n.is_read) {
+      await markRead(n.id);
+    }
+    if (path) {
+      navigate(path);
+      setOpen(false);
+    }
+  };
+
   return (
     <div className="relative" ref={wrapRef}>
       <button
@@ -113,14 +162,16 @@ export default function NotificationBell() {
             {!loading && items.length === 0 && (
               <p className="p-4 text-sm text-slate-500 text-center">No notifications yet.</p>
             )}
-            {items.map((n) => (
+            {items.map((n) => {
+              const path = getNotificationPath(n);
+              return (
               <button
                 key={n.id}
                 type="button"
-                onClick={() => !n.is_read && markRead(n.id)}
+                onClick={() => handleItemClick(n)}
                 className={`w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-700/50 ${
                   !n.is_read ? 'bg-growe/5 dark:bg-growe/10' : ''
-                }`}
+                } ${path ? 'cursor-pointer' : ''}`}
               >
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100 line-clamp-2">{n.title}</p>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 line-clamp-2">{n.message}</p>
@@ -128,7 +179,8 @@ export default function NotificationBell() {
                   {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
                 </p>
               </button>
-            ))}
+            );
+            })}
           </div>
         </div>
       )}

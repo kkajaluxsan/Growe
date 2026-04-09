@@ -13,7 +13,8 @@ export const requireAssignmentOwnerOrAdmin = async (req, res, next) => {
     }
 
     const isAdmin = req.user.roleName === 'admin';
-    if (assignment.user_id !== req.user.id && !isAdmin) {
+    const isSchoolwide = Boolean(assignment.visible_to_all);
+    if (assignment.user_id !== req.user.id && !isAdmin && !isSchoolwide) {
       return res.status(403).json({ error: 'You can only access your own assignments' });
     }
 

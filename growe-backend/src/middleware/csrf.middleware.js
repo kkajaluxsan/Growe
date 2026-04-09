@@ -32,6 +32,17 @@ export const issueCsrfToken = (req, res) => {
 export const validateCsrf = (req, res, next) => {
   if (process.env.DISABLE_CSRF === '1') return next();
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  // `validateCsrf` is mounted at `/api/`, so `req.path` is relative to that mount (e.g. `/auth/login`).
+  // We intentionally exempt public auth endpoints so first-time login/register does not require a prior CSRF fetch.
+  const exemptPaths = new Set([
+    '/auth/login',
+    '/auth/register',
+    '/auth/google',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    '/auth/request-verification-email',
+  ]);
+  if (exemptPaths.has(req.path)) return next();
   const cookieToken = req.cookies?.[COOKIE_NAME];
   const headerToken = req.get(HEADER_NAME) || req.get(HEADER_NAME.toLowerCase());
   if (!cookieToken || !headerToken) {

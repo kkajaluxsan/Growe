@@ -102,7 +102,8 @@ export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } =
 export const listAvailabilityForTutorsOnDate = async (dateStr) => {
   const { rows } = await query(
     `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
-            tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects, u.email as tutor_email
+            tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects,
+            u.email as tutor_email, u.display_name as tutor_display_name, u.avatar_url as tutor_avatar_url
      FROM tutor_availability ta
      JOIN tutor_profiles tp ON ta.tutor_id = tp.id
      JOIN users u ON tp.user_id = u.id

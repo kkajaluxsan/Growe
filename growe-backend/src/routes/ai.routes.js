@@ -15,6 +15,7 @@ const aiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+router.get('/status', authenticate, requireVerified, aiController.status);
 router.post('/chat', authenticate, requireVerified, aiLimiter, validateAiChat, aiController.chat);
 
 export default router;

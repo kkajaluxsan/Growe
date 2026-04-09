@@ -13,11 +13,11 @@
     "migrate": "npm run db:migrate",
     "db:migrate": "npm --prefix growe-backend run migrate",
     "db:seed": "npm --prefix growe-backend run seed",
-    "dev": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:lan": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev:web:lan\"",
+    "dev": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"wait-on -t 120000 tcp:127.0.0.1:5001 && npm run dev:web\"",
+    "dev:lan": "concurrently -k -n \"api,web\" -c \"cyan,magenta\" \"npm run dev:api\" \"wait-on -t 120000 tcp:127.0.0.1:5001 && npm run dev:web:lan\"",
     "start": "npm run dev",
     "dev:clean": "npm run dev:kill && npm run dev",
-    "dev:full": "npm run dev:kill && concurrently -k -n \"laravel,api,web\" -c \"yellow,cyan,magenta\" \"npm run dev:laravel\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:full": "npm run dev:kill && concurrently -k -n \"laravel,api,web\" -c \"yellow,cyan,magenta\" \"npm run dev:laravel\" \"npm run dev:api\" \"wait-on -t 120000 tcp:127.0.0.1:5001 && npm run dev:web\"",
     "dev:api": "npm --prefix growe-backend run dev",
     "dev:web": "npm --prefix growe-frontend run dev",
     "dev:web:lan": "npm --prefix growe-frontend run dev:lan",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "kill-port": "^2.0.1"
+    "kill-port": "^2.0.1",
+    "wait-on": "^8.0.1"
   }
 }

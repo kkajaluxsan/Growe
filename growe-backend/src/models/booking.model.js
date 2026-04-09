@@ -105,7 +105,8 @@ export const getReliabilityRanking = async ({ limit = 50 } = {}) => {
 
 export const findDueForReminder = async (windowStart, windowEnd) => {
   const { rows } = await query(
-    `SELECT b.id, b.student_id, b.start_time, u.email as student_email, tu.email as tutor_email
+    `SELECT b.id, b.student_id, b.start_time, u.email as student_email, tu.email as tutor_email,
+            tp.user_id as tutor_user_id
      FROM bookings b
      JOIN users u ON b.student_id = u.id
      JOIN tutor_availability ta ON b.availability_id = ta.id
@@ -118,9 +119,34 @@ export const findDueForReminder = async (windowStart, windowEnd) => {
   return rows;
 };
 
+/** Confirmed bookings starting in [windowStart, windowEnd] — for "session starting soon" (e.g. 10 min). */
+export const findDueForImminentReminder = async (windowStart, windowEnd) => {
+  const { rows } = await query(
+    `SELECT b.id, b.student_id, b.start_time, u.email as student_email, tu.email as tutor_email,
+            tp.user_id as tutor_user_id
+     FROM bookings b
+     JOIN users u ON b.student_id = u.id
+     JOIN tutor_availability ta ON b.availability_id = ta.id
+     JOIN tutor_profiles tp ON ta.tutor_id = tp.id
+     JOIN users tu ON tp.user_id = tu.id
+     WHERE b.status = 'confirmed' AND b.imminent_reminder_sent_at IS NULL
+       AND b.start_time >= $1 AND b.start_time <= $2`,
+    [windowStart, windowEnd]
+  );
+  return rows;
+};
+
 export const markReminderSent = async (bookingId) => {
   const { rows } = await query(
     `UPDATE bookings SET reminder_sent_at = NOW() WHERE id = $1 RETURNING id`,
+    [bookingId]
+  );
+  return rows[0] || null;
+};
+
+export const markImminentReminderSent = async (bookingId) => {
+  const { rows } = await query(
+    `UPDATE bookings SET imminent_reminder_sent_at = NOW() WHERE id = $1 RETURNING id`,
     [bookingId]
   );
   return rows[0] || null;
@@ -142,4 +168,20 @@ export const countBookingsForSlot = async (availabilityId, startTime, endTime) =
     [availabilityId, startTime, endTime]
   );
   return rows[0].count;
+};
+
+/** Completed sessions per tutor profile (for tutor selection UX). */
+export const countCompletedSessionsByTutorIds = async (tutorProfileIds) => {
+  if (!tutorProfileIds?.length) return new Map();
+  const { rows } = await query(
+    `SELECT ta.tutor_id, COUNT(*)::int as completed_count
+     FROM bookings b
+     JOIN tutor_availability ta ON b.availability_id = ta.id
+     WHERE ta.tutor_id = ANY($1::uuid[]) AND b.status = 'completed'
+     GROUP BY ta.tutor_id`,
+    [tutorProfileIds]
+  );
+  const m = new Map();
+  rows.forEach((r) => m.set(r.tutor_id, r.completed_count));
+  return m;
 };

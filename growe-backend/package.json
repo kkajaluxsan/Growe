@@ -11,9 +11,12 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "maildev": "maildev",
+    "mailpit": "maildev",
     "test": "node --test src/utils/timeUtils.test.js src/utils/slotGenerator.test.js src/validation/assignment.schema.test.js",
     "migrate": "node src/config/runMigrations.js",
-    "seed": "node src/config/runSeeds.js"
+    "seed": "node src/config/runSeeds.js",
+    "resend:test": "node scripts/resendTestEmail.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -30,8 +33,12 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
     "pg": "^8.13.0",
+    "resend": "^6.9.4",
     "sanitize-html": "^2.17.2",
     "socket.io": "^4.7.5",
     "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "maildev": "^2.2.1"
   }
 }
