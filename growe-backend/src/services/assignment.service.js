@@ -25,6 +25,7 @@ export function enrichAssignment(row) {
   return {
     ...row,
     priorityLabel: DB_TO_PRIORITY_LABEL[row.priority] ?? 'MEDIUM',
+    visibleToAll: Boolean(row.visible_to_all),
     isOverdue,
   };
 }
@@ -77,7 +78,7 @@ function assertStatusTransition(prevDb, nextDb, { isAdmin, adminOverrideComplete
   }
 }
 
-export async function createAssignment(userId, body) {
+export async function createAssignment(userId, body, { roleName } = {}) {
   const title = sanitizePlainText(body.title);
   const description = sanitizePlainText(body.description);
   const statusDb = normalizeStatusFromApi(body.status) ?? 'pending';
@@ -90,6 +91,13 @@ export async function createAssignment(userId, body) {
     throw httpError(400, 'Invalid deadline', ['Deadline must be after the current date and time']);
   }
 
+  const wantsVisibleToAll = Boolean(body.visibleToAll);
+  if (wantsVisibleToAll && roleName !== 'admin') {
+    throw httpError(403, 'Only administrators can post assignments for everyone', [
+      'Set visibleToAll only when using an admin account, or omit it for a personal assignment.',
+    ]);
+  }
+
   const row = await assignmentModel.create({
     userId,
     title,
@@ -97,6 +105,7 @@ export async function createAssignment(userId, body) {
     status: statusDb,
     priority: priorityDb,
     deadline,
+    visibleToAll: wantsVisibleToAll && roleName === 'admin',
   });
   Promise.resolve()
     .then(() => notificationService.notifyAssignmentCreated({ userId, assignment: row }))

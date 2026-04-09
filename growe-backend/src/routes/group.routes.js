@@ -17,17 +17,21 @@ const router = Router();
 router.use(authenticate);
 router.use(requireVerified);
 
-router.post('/', requireRole('student', 'tutor'), validateGroupCreate, groupController.create);
+router.post('/', requireRole('student', 'tutor', 'admin'), validateGroupCreate, groupController.create);
 router.get('/', groupController.list);
 
 // Non-ID routes must come before `/:id` to avoid conflicts (e.g. `join-by-token`).
-router.post('/join-by-token', requireRole('student', 'tutor'), groupController.joinByInviteToken);
+router.post('/join-by-token', requireRole('student', 'tutor', 'admin'), groupController.joinByInviteToken);
+
+router.get('/:id/tutor-invite', requireGroupMember, groupController.getTutorInviteForGroup);
+router.post('/:groupId/tutor-invites/:inviteId/accept', requireRole('tutor'), groupController.acceptGroupTutorInvite);
+router.post('/:groupId/tutor-invites/:inviteId/reject', requireRole('tutor'), groupController.rejectGroupTutorInvite);
 
 router.get('/:id', requireGroupMember, groupController.getById);
 router.patch('/:id', requireGroupCreator, validateGroupUpdate, groupController.update);
 router.delete('/:id', requireGroupCreator, groupController.remove);
 
-router.post('/:id/join-request', requireRole('student', 'tutor'), groupController.requestJoin);
+router.post('/:id/join-request', requireRole('student', 'tutor', 'admin'), groupController.requestJoin);
 router.post('/:id/approve/:userId', requireGroupCreator, groupController.approveJoin);
 router.post('/:id/reject/:userId', requireGroupCreator, groupController.rejectJoin);
 router.get('/:id/members', requireGroupMember, groupController.listMembers);

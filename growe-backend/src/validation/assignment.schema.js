@@ -66,6 +66,8 @@ export const assignmentCreateSchema = Joi.object({
   deadline: futureDeadline,
   status: statusApi.default('PENDING'),
   priority: priorityApi.default('MEDIUM'),
+  /** Admin only: show to all students/tutors (enforced in service). */
+  visibleToAll: Joi.boolean().optional(),
 })
   .unknown(false)
   .messages({ 'object.unknown': 'Unknown field {#label} is not allowed' });

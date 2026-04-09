@@ -1,3 +1,10 @@
+import {
+  isPast,
+  parseYYYYMMDDLocal,
+  startOfLocalDay,
+  combineDateAndTimeLocal,
+} from '../utils/timeUtils.js';
+
 export const validateRegister = (req, res, next) => {
   const { email, password, roleName } = req.body;
   const errors = [];
@@ -173,20 +180,15 @@ export const validateAvailabilityCreate = (req, res, next) => {
   const maxStudentsPerSlot = req.body.maxStudentsPerSlot ?? req.body.max_students_per_slot;
   const errors = [];
 
-  if (!availableDate || typeof availableDate !== 'string') {
+  const dateTrimmed = typeof availableDate === 'string' ? availableDate.trim() : '';
+  if (!dateTrimmed) {
     errors.push('Available date is required');
   } else {
-    const d = new Date(availableDate);
-    if (isNaN(d.getTime())) {
-      errors.push('Invalid date format');
-    } else {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const input = new Date(availableDate);
-      input.setHours(0, 0, 0, 0);
-      if (input.getTime() < today.getTime()) {
-        errors.push('Available date cannot be in the past');
-      }
+    const parsedDay = parseYYYYMMDDLocal(dateTrimmed);
+    if (!parsedDay) {
+      errors.push('Invalid date format (use YYYY-MM-DD)');
+    } else if (parsedDay.getTime() < startOfLocalDay().getTime()) {
+      errors.push('Available date cannot be in the past');
     }
   }
 
@@ -196,9 +198,22 @@ export const validateAvailabilityCreate = (req, res, next) => {
   if (!endTime || typeof endTime !== 'string') {
     errors.push('End time is required');
   }
-  if (startTime && endTime && typeof startTime === 'string' && typeof endTime === 'string') {
-    if (startTime >= endTime) {
-      errors.push('Start time must be less than end time');
+  if (
+    dateTrimmed &&
+    startTime &&
+    endTime &&
+    typeof startTime === 'string' &&
+    typeof endTime === 'string' &&
+    parseYYYYMMDDLocal(dateTrimmed)
+  ) {
+    const startDt = combineDateAndTimeLocal(dateTrimmed, startTime);
+    const endDt = combineDateAndTimeLocal(dateTrimmed, endTime);
+    if (!startDt || !endDt || Number.isNaN(startDt.getTime()) || Number.isNaN(endDt.getTime())) {
+      errors.push('Invalid start or end time');
+    } else if (endDt.getTime() <= startDt.getTime()) {
+      errors.push('End time must be after start time');
+    } else if (isPast(endDt)) {
+      errors.push('This availability window has already ended; choose a future end time or date');
     }
   }
 
@@ -223,7 +238,7 @@ export const validateAvailabilityCreate = (req, res, next) => {
   }
 
   // Normalize to canonical camelCase for controllers/services
-  req.body.availableDate = availableDate;
+  req.body.availableDate = dateTrimmed || availableDate;
   req.body.startTime = startTime;
   req.body.endTime = endTime;
   req.body.sessionDuration = sessionDuration;
@@ -243,6 +258,17 @@ export const validateBookingCreate = (req, res, next) => {
   }
   if (!endTime || typeof endTime !== 'string') {
     errors.push('End time is required');
+  }
+
+  if (startTime && endTime && typeof startTime === 'string' && typeof endTime === 'string') {
+    const st = new Date(startTime);
+    const en = new Date(endTime);
+    if (Number.isNaN(st.getTime()) || Number.isNaN(en.getTime())) {
+      errors.push('Start and end must be valid datetimes');
+    } else {
+      if (isPast(st)) errors.push('Cannot book a session in the past');
+      if (en.getTime() <= st.getTime()) errors.push('End time must be after start time');
+    }
   }
 
   if (errors.length > 0) {
@@ -274,12 +300,22 @@ export const validateMeetingCreate = (req, res, next) => {
   if (title !== undefined && title !== null && typeof title !== 'string') {
     errors.push('Title must be a string');
   }
-  if (scheduledAt !== undefined && scheduledAt !== null) {
+  if (scheduledAt !== undefined && scheduledAt !== null && scheduledAt !== '') {
     const d = new Date(scheduledAt);
-    if (isNaN(d.getTime())) errors.push('scheduledAt must be a valid ISO date string');
+    if (Number.isNaN(d.getTime())) errors.push('scheduledAt must be a valid ISO date string');
+    else if (isPast(d)) errors.push('Meeting scheduled time must be in the future');
   }
   if (tutorId && (!slot || !slot.availabilityId || !slot.startTime || !slot.endTime)) {
     errors.push('When selecting a tutor, slot (availabilityId, startTime, endTime) is required');
+  } else if (tutorId && slot?.startTime && slot?.endTime) {
+    const ss = new Date(slot.startTime);
+    const ee = new Date(slot.endTime);
+    if (!Number.isNaN(ss.getTime()) && isPast(ss)) {
+      errors.push('Selected tutor slot is in the past');
+    }
+    if (!Number.isNaN(ss.getTime()) && !Number.isNaN(ee.getTime()) && ee.getTime() <= ss.getTime()) {
+      errors.push('Slot end must be after slot start');
+    }
   }
 
   if (errors.length > 0) {

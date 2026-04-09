@@ -1,14 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
+import Button from '../../components/ui/Button';
+import Card, { CardHeader } from '../../components/ui/Card';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   ASSIGNMENT_STATUSES,
   ASSIGNMENT_PRIORITIES,
+  ASSIGNMENT_TITLE_MAX,
+  ASSIGNMENT_DESCRIPTION_MAX,
   minDatetimeLocalNow,
-  isDeadlineInFuture,
+  getCreateAssignmentErrors,
   formatAssignmentApiError,
 } from '../../constants/assignments';
+import { fieldLabel, fieldInputClass } from './assignmentFormStyles';
 
 export default function CreateAssignment() {
   const [title, setTitle] = useState('');
@@ -18,7 +24,10 @@ export default function CreateAssignment() {
   const [deadline, setDeadline] = useState('');
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
+  const [visibleToAll, setVisibleToAll] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.roleName === 'admin';
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
 
@@ -40,23 +49,19 @@ export default function CreateAssignment() {
     setDeadline(local);
   }, [searchParams, toast]);
 
-  const fieldErrors = useMemo(() => {
-    const e = {};
-    if (!title.trim()) e.title = 'Title is required';
-    if (!description.trim()) e.description = 'Description is required';
-    if (!deadline) e.deadline = 'Deadline is required';
-    else if (!isDeadlineInFuture(deadline)) e.deadline = 'Deadline must be after the current date and time';
-    return e;
-  }, [title, description, deadline]);
+  const fieldErrors = useMemo(
+    () => getCreateAssignmentErrors({ title, description, deadline }),
+    [title, description, deadline]
+  );
 
   const showErrors = touched.all || Object.keys(touched).length > 0;
-  const formInvalid = Object.keys(fieldErrors).length > 0;
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
     setTouched({ all: true });
-    if (Object.keys(fieldErrors).length) {
-      toast.error('Fix the highlighted fields before submitting.');
+    const errs = getCreateAssignmentErrors({ title, description, deadline });
+    if (Object.keys(errs).length) {
+      toast.error('Please fix the highlighted fields.');
       return;
     }
     setLoading(true);
@@ -67,6 +72,7 @@ export default function CreateAssignment() {
         status,
         priority,
         deadline: new Date(deadline).toISOString(),
+        ...(isAdmin && visibleToAll ? { visibleToAll: true } : {}),
       });
       toast.success('Assignment created');
       navigate('/assignments');
@@ -78,86 +84,156 @@ export default function CreateAssignment() {
   };
 
   return (
-    <div className="max-w-lg">
-      <h1 className="text-2xl font-bold mb-6 text-slate-900 dark:text-slate-100">Add assignment</h1>
-      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-slate-200 dark:border-slate-600">
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Title</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => setTouched((t) => ({ ...t, title: true }))}
-            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-            aria-invalid={showErrors && fieldErrors.title}
-          />
-          {showErrors && fieldErrors.title && <p className="text-sm text-red-600 mt-1">{fieldErrors.title}</p>}
-        </div>
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => setTouched((t) => ({ ...t, description: true }))}
-            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-            rows={4}
-            aria-invalid={showErrors && fieldErrors.description}
-          />
-          {showErrors && fieldErrors.description && (
-            <p className="text-sm text-red-600 mt-1">{fieldErrors.description}</p>
+    <div className="mx-auto max-w-2xl">
+      <Card>
+        <CardHeader
+          title="New assignment"
+          subtitle={
+            isAdmin
+              ? 'Admins can optionally post for everyone. Title, description, and a future deadline are required.'
+              : 'Title and description are required. Deadline must be in the future.'
+          }
+        />
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+          <div>
+            <label htmlFor="assignment-title" className={fieldLabel}>
+              Title <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="assignment-title"
+              type="text"
+              value={title}
+              maxLength={ASSIGNMENT_TITLE_MAX}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, title: true }))}
+              className={`mt-1.5 ${fieldInputClass(showErrors && !!fieldErrors.title)}`}
+              aria-invalid={showErrors && !!fieldErrors.title}
+              aria-describedby={showErrors && fieldErrors.title ? 'err-title' : undefined}
+              autoComplete="off"
+            />
+            <div className="mt-1 flex justify-between text-xs text-slate-500">
+              <span>{showErrors && fieldErrors.title ? <span id="err-title" className="text-red-600">{fieldErrors.title}</span> : <span />}</span>
+              <span>
+                {title.length}/{ASSIGNMENT_TITLE_MAX}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="assignment-desc" className={fieldLabel}>
+              Description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="assignment-desc"
+              value={description}
+              maxLength={ASSIGNMENT_DESCRIPTION_MAX}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, description: true }))}
+              rows={5}
+              className={`mt-1.5 ${fieldInputClass(showErrors && !!fieldErrors.description)}`}
+              aria-invalid={showErrors && !!fieldErrors.description}
+              aria-describedby={showErrors && fieldErrors.description ? 'err-desc' : undefined}
+            />
+            <div className="mt-1 flex justify-between text-xs text-slate-500">
+              <span>
+                {showErrors && fieldErrors.description ? (
+                  <span id="err-desc" className="text-red-600">
+                    {fieldErrors.description}
+                  </span>
+                ) : (
+                  <span />
+                )}
+              </span>
+              <span>
+                {description.length}/{ASSIGNMENT_DESCRIPTION_MAX}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="assignment-status" className={fieldLabel}>
+                Status
+              </label>
+              <select
+                id="assignment-status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className={`mt-1.5 ${fieldInputClass(false)}`}
+              >
+                {ASSIGNMENT_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="assignment-priority" className={fieldLabel}>
+                Priority
+              </label>
+              <select
+                id="assignment-priority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className={`mt-1.5 ${fieldInputClass(false)}`}
+              >
+                {ASSIGNMENT_PRIORITIES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="assignment-deadline" className={fieldLabel}>
+              Deadline <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="assignment-deadline"
+              type="datetime-local"
+              value={deadline}
+              min={minLocal}
+              onChange={(e) => setDeadline(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, deadline: true }))}
+              className={`mt-1.5 ${fieldInputClass(showErrors && !!fieldErrors.deadline)}`}
+              aria-invalid={showErrors && !!fieldErrors.deadline}
+            />
+            {showErrors && fieldErrors.deadline && <p className="mt-1 text-sm text-red-600">{fieldErrors.deadline}</p>}
+          </div>
+
+          {isAdmin && (
+            <div className="rounded-xl border border-growe/30 bg-growe/5 p-4 dark:bg-growe/10">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={visibleToAll}
+                  onChange={(e) => setVisibleToAll(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-growe-dark focus:ring-growe"
+                />
+                <span className="text-sm text-slate-800 dark:text-slate-100">
+                  <span className="font-semibold">Visible to all students &amp; tutors</span>
+                  <span className="mt-1 block text-slate-600 dark:text-slate-400">
+                    Everyone with a verified account will see this assignment in their list and can open the details.
+                  </span>
+                </span>
+              </label>
+            </div>
           )}
-        </div>
-        <div className="mb-4 grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-            >
-              {ASSIGNMENT_STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Creating…' : 'Create assignment'}
+            </Button>
+            <Button type="button" variant="secondary" disabled={loading} onClick={() => navigate('/assignments')}>
+              Cancel
+            </Button>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Priority</label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-            >
-              {ASSIGNMENT_PRIORITIES.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">Deadline</label>
-          <input
-            type="datetime-local"
-            value={deadline}
-            min={minLocal}
-            onChange={(e) => setDeadline(e.target.value)}
-            onBlur={() => setTouched((t) => ({ ...t, deadline: true }))}
-            className="w-full border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-            aria-invalid={showErrors && fieldErrors.deadline}
-          />
-          {showErrors && fieldErrors.deadline && <p className="text-sm text-red-600 mt-1">{fieldErrors.deadline}</p>}
-        </div>
-        <button
-          type="submit"
-          disabled={loading || formInvalid}
-          className="bg-slate-800 dark:bg-growe dark:text-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 dark:hover:bg-growe-light disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Creating…' : 'Create'}
-        </button>
-      </form>
+        </form>
+      </Card>
     </div>
   );
 }
+

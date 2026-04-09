@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import Button from '../../components/ui/Button';
+import Card, { CardHeader } from '../../components/ui/Card';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import AssignmentCalendar from './AssignmentCalendar';
 import {
   ASSIGNMENT_STATUSES_FILTER,
@@ -10,6 +12,8 @@ import {
   SORT_OPTIONS,
   normalizeListResponse,
   formatAssignmentApiError,
+  formatAssignmentStatusLabel,
+  listFilterDateRangeInvalid,
 } from '../../constants/assignments';
 
 const viewTabs = [
@@ -17,8 +21,40 @@ const viewTabs = [
   { id: 'calendar', label: 'Calendar' },
 ];
 
+function StatusPill({ status }) {
+  const s = (status || '').toLowerCase();
+  const cls =
+    s === 'completed'
+      ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100'
+      : s === 'in_progress'
+        ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100'
+        : 'bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200';
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}>
+      {formatAssignmentStatusLabel(status)}
+    </span>
+  );
+}
+
+function PriorityBadge({ priorityLabel, priority }) {
+  const label = priorityLabel || (priority === 1 ? 'LOW' : priority === 3 ? 'HIGH' : 'MEDIUM');
+  const cls =
+    label === 'HIGH'
+      ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-100'
+      : label === 'LOW'
+        ? 'bg-slate-100 text-slate-700 dark:bg-slate-600/80 dark:text-slate-200'
+        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-100';
+  return (
+    <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 export default function AssignmentList() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.roleName === 'admin';
   const [view, setView] = useState('list');
   const [assignments, setAssignments] = useState([]);
   const [total, setTotal] = useState(0);
@@ -32,7 +68,18 @@ export default function AssignmentList() {
   const [limit] = useState(10);
   const [offset, setOffset] = useState(0);
 
+  const filterRangeInvalid = useMemo(
+    () => listFilterDateRangeInvalid(deadlineAfter, deadlineBefore),
+    [deadlineAfter, deadlineBefore]
+  );
+
   const fetchList = useCallback(() => {
+    if (filterRangeInvalid) {
+      setAssignments([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const params = {
       sortBy,
@@ -54,14 +101,35 @@ export default function AssignmentList() {
       })
       .catch(() => toast.error('Failed to load assignments'))
       .finally(() => setLoading(false));
-  }, [statusFilter, priorityFilter, deadlineAfter, deadlineBefore, sortBy, sortOrder, limit, offset, toast]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    deadlineAfter,
+    deadlineBefore,
+    sortBy,
+    sortOrder,
+    limit,
+    offset,
+    toast,
+    filterRangeInvalid,
+  ]);
 
   useEffect(() => {
     if (view === 'list') fetchList();
   }, [view, fetchList]);
 
+  const clearFilters = () => {
+    setStatusFilter('');
+    setPriorityFilter('');
+    setDeadlineAfter('');
+    setDeadlineBefore('');
+    setSortBy('deadline');
+    setSortOrder('asc');
+    setOffset(0);
+  };
+
   const handleDelete = async (aid) => {
-    if (!confirm('Delete this assignment?')) return;
+    if (!confirm('Delete this assignment? This cannot be undone.')) return;
     try {
       await api.delete(`/assignments/${aid}`);
       toast.success('Assignment removed');
@@ -74,22 +142,32 @@ export default function AssignmentList() {
 
   const page = Math.floor(offset / limit) + 1;
   const pageCount = Math.max(1, Math.ceil(total / limit));
+  const hasActiveFilters =
+    statusFilter || priorityFilter || deadlineAfter || deadlineBefore || sortBy !== 'deadline' || sortOrder !== 'asc';
+
+  const inputBase =
+    'rounded-xl border py-2.5 px-3 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-shadow focus:border-growe focus:outline-none focus:ring-2 focus:ring-growe/30 dark:border-slate-600';
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Assignments</h1>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Assignments</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Track due dates, priorities, and status in one place.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-lg border border-slate-200 dark:border-slate-600 p-0.5">
+          <div className="flex rounded-xl border border-slate-200 p-0.5 dark:border-slate-600">
             {viewTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setView(tab.id)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   view === tab.id
-                    ? 'bg-growe text-slate-900'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    ? 'bg-growe text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
               >
                 {tab.label}
@@ -98,7 +176,7 @@ export default function AssignmentList() {
           </div>
           <Link
             to="/assignments/new"
-            className="font-medium rounded-2xl shadow-md px-4 py-2 text-sm bg-slate-800 text-white hover:bg-slate-700 dark:bg-growe dark:text-slate-900 dark:hover:bg-growe-light"
+            className="inline-flex items-center justify-center rounded-2xl bg-growe px-4 py-2 text-sm font-medium text-slate-900 shadow-md transition-all hover:bg-growe-light hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-growe-dark focus:ring-offset-2 dark:bg-growe dark:text-slate-900 dark:hover:bg-growe-light"
           >
             Add assignment
           </Link>
@@ -109,171 +187,230 @@ export default function AssignmentList() {
         <AssignmentCalendar />
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setOffset(0);
-                  setStatusFilter(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              >
-                {ASSIGNMENT_STATUSES_FILTER.map((o) => (
-                  <option key={o.value || 'all'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+          <Card>
+            <CardHeader
+              title="Filters & sort"
+              subtitle="Refine the list. Due date range must be valid (start ≤ end)."
+              action={
+                hasActiveFilters ? (
+                  <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                    Clear all
+                  </Button>
+                ) : null
+              }
+            />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setStatusFilter(e.target.value);
+                  }}
+                  className={`w-full ${inputBase}`}
+                >
+                  {ASSIGNMENT_STATUSES_FILTER.map((o) => (
+                    <option key={o.value || 'all'} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setPriorityFilter(e.target.value);
+                  }}
+                  className={`w-full ${inputBase}`}
+                >
+                  {ASSIGNMENT_PRIORITIES_FILTER.map((o) => (
+                    <option key={o.value || 'all-p'} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Due after</label>
+                <input
+                  type="date"
+                  value={deadlineAfter}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setDeadlineAfter(e.target.value);
+                  }}
+                  className={`w-full ${inputBase} ${filterRangeInvalid ? 'border-red-500 ring-1 ring-red-500/30' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Due before</label>
+                <input
+                  type="date"
+                  value={deadlineBefore}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setDeadlineBefore(e.target.value);
+                  }}
+                  className={`w-full ${inputBase} ${filterRangeInvalid ? 'border-red-500 ring-1 ring-red-500/30' : ''}`}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Sort by</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setSortBy(e.target.value);
+                  }}
+                  className={`w-full ${inputBase}`}
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">Order</label>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => {
+                    setOffset(0);
+                    setSortOrder(e.target.value);
+                  }}
+                  className={`w-full ${inputBase}`}
+                >
+                  <option value="asc">Ascending</option>
+                  <option value="desc">Descending</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Priority</label>
-              <select
-                value={priorityFilter}
-                onChange={(e) => {
-                  setOffset(0);
-                  setPriorityFilter(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              >
-                {ASSIGNMENT_PRIORITIES_FILTER.map((o) => (
-                  <option key={o.value || 'all-p'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Due after</label>
-              <input
-                type="date"
-                value={deadlineAfter}
-                onChange={(e) => {
-                  setOffset(0);
-                  setDeadlineAfter(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Due before</label>
-              <input
-                type="date"
-                value={deadlineBefore}
-                onChange={(e) => {
-                  setOffset(0);
-                  setDeadlineBefore(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Sort by</label>
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  setOffset(0);
-                  setSortBy(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Order</label>
-              <select
-                value={sortOrder}
-                onChange={(e) => {
-                  setOffset(0);
-                  setSortOrder(e.target.value);
-                }}
-                className="border border-slate-300 dark:border-slate-600 rounded-lg py-2 px-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-              >
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
-            </div>
-          </div>
+            {filterRangeInvalid && (
+              <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
+                “Due after” must be on or before “Due before”. Adjust the dates or clear the filters.
+              </p>
+            )}
+          </Card>
 
           {loading ? (
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-growe" />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800/80"
+                />
+              ))}
+            </div>
+          ) : filterRangeInvalid ? (
+            <Card>
+              <p className="text-center text-slate-600 dark:text-slate-400">Fix the date range above to load assignments.</p>
+            </Card>
+          ) : assignments.length === 0 ? (
+            <Card className="text-center">
+              <div className="py-10">
+                <p className="text-lg font-medium text-slate-800 dark:text-slate-100">No assignments yet</p>
+                <p className="mt-2 max-w-md mx-auto text-sm text-slate-600 dark:text-slate-400">
+                  {hasActiveFilters
+                    ? 'Nothing matches these filters. Try clearing filters or widening the due date range.'
+                    : 'Create your first assignment to track coursework and deadlines.'}
+                </p>
+                <Link
+                  to="/assignments/new"
+                  className="mt-6 inline-flex items-center justify-center rounded-2xl bg-growe px-5 py-2.5 text-sm font-medium text-slate-900 shadow-md transition-all hover:bg-growe-light hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-growe-dark focus:ring-offset-2 dark:bg-growe dark:text-slate-900"
+                >
+                  Create assignment
+                </Link>
+              </div>
+            </Card>
           ) : (
-            <>
-              <div className="space-y-4">
-                {assignments.length === 0 ? (
-                  <p className="text-slate-600 dark:text-slate-400">No assignments match your filters.</p>
-                ) : (
-                  assignments.map((a) => (
-                    <div
-                      key={a.id}
-                      className={`p-4 rounded-lg shadow border flex justify-between items-center gap-4 ${
-                        a.isOverdue
-                          ? 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
-                          : 'bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-600'
-                      }`}
-                    >
-                      <div>
-                        <h2 className="font-semibold text-slate-900 dark:text-slate-100">{a.title}</h2>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {a.status.replace(/_/g, ' ')} • {a.priorityLabel || `P${a.priority}`}
-                          {a.isOverdue && (
-                            <span className="ml-2 font-medium text-red-700 dark:text-red-300">Overdue</span>
+            <ul className="space-y-3">
+              {assignments.map((a) => (
+                <li key={a.id}>
+                  <Card
+                    className={`transition-shadow hover:shadow-lg ${
+                      a.isOverdue ? 'border-red-200/80 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20' : ''
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-slate-100">{a.title}</h2>
+                          {a.visibleToAll && (
+                            <span className="rounded-full bg-growe/25 px-2 py-0.5 text-xs font-semibold text-growe-dark dark:text-growe">
+                              Everyone
+                            </span>
                           )}
-                        </p>
+                          {a.isOverdue && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+                              Overdue
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusPill status={a.status} />
+                          <PriorityBadge priorityLabel={a.priorityLabel} priority={a.priority} />
+                        </div>
                         {a.deadline && (
-                          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                            Due: {new Date(a.deadline).toLocaleString()}
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            <span className="font-medium text-slate-700 dark:text-slate-300">Due:</span>{' '}
+                            {new Date(a.deadline).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })}
                           </p>
                         )}
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        <Link to={`/assignments/${a.id}`} className="text-slate-600 dark:text-growe hover:underline text-sm">
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(a.id)}
-                          className="text-red-600 hover:underline text-sm"
+                      <div className="flex shrink-0 gap-2 sm:flex-col sm:items-end">
+                        <Link
+                          to={`/assignments/${a.id}`}
+                          className="inline-flex items-center justify-center rounded-2xl bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-all hover:bg-slate-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500"
                         >
-                          Delete
-                        </button>
+                          {a.visibleToAll && !isAdmin && a.user_id !== user?.id ? 'View' : 'Edit'}
+                        </Link>
+                        {(isAdmin || (a.user_id === user?.id && !a.visibleToAll)) && (
+                          <Button variant="danger" size="sm" type="button" onClick={() => handleDelete(a.id)}>
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  ))
-                )}
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!loading && !filterRangeInvalid && total > limit && (
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Page {page} of {pageCount} · {total} total
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  disabled={offset === 0}
+                  onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  disabled={offset + limit >= total}
+                  onClick={() => setOffset((o) => o + limit)}
+                >
+                  Next
+                </Button>
               </div>
-              {total > limit && (
-                <div className="flex items-center justify-between mt-6">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Page {page} of {pageCount} ({total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={offset === 0}
-                      onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={offset + limit >= total}
-                      onClick={() => setOffset((o) => o + limit)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </>
       )}

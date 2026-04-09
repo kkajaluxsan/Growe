@@ -4,22 +4,29 @@ import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
+import { authLabel, authInput } from '../../components/auth/authFieldStyles';
 
 export default function ForgotPassword() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
-      await api.post('/auth/forgot-password', { email });
+      await api.post('/auth/forgot-password', { email }, { skipGlobalErrorToast: true });
       setSent(true);
       toast.success('If an account exists, we sent a reset link.');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to send reset email');
+      const d = err.response?.data;
+      const msg = d?.error || d?.message || 'Failed to send reset email';
+      const detail = typeof d?.details === 'string' ? d.details.trim() : '';
+      setError(detail ? `${msg}\n\n${detail}` : msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -40,13 +47,21 @@ export default function ForgotPassword() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-200">
+                {error}
+              </div>
+            )}
             <div>
-              <label className="block text-slate-700 dark:text-slate-300 text-sm font-medium mb-1">Email</label>
+              <label htmlFor="forgot-email" className={authLabel}>
+                Email
+              </label>
               <input
+                id="forgot-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-growe/50"
+                className={authInput}
                 required
                 autoComplete="email"
               />
@@ -70,4 +85,3 @@ export default function ForgotPassword() {
     </div>
   );
 }
-
