@@ -22,11 +22,15 @@ export const search = async (req, res, next) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
 
+    const viewer = await userModel.findById(req.user.id);
+    const viewerSpecialization = viewer?.specialization ? String(viewer.specialization).trim() : '';
+
     const batch = await userModel.searchPublicUsers({
       excludeUserId: req.user.id,
       q: raw,
       limit: limit + 1,
       offset,
+      viewerSpecialization,
     });
 
     const hasMore = batch.length > limit;

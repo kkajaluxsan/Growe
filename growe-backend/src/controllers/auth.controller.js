@@ -15,7 +15,15 @@ import {
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.service.js';
 import { isSmtpConfigured } from '../services/emailDelivery.service.js';
 import * as notificationModel from '../models/notification.model.js';
+import * as notificationService from '../services/notification.service.js';
 import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
+import {
+  normalizeIndexNumber,
+  normalizePhoneToE164,
+  isValidIndexNumber,
+  isValidPhone,
+} from '../utils/academicIdentity.js';
+import { isAllowedSpecialization } from '../constants/specializations.js';
 const BCRYPT_ROUNDS = 12;
 
 const ACCESS_TOKEN_TTL = '15m';
@@ -32,6 +40,19 @@ const getRefreshCookieOptions = () => {
   };
 };
 
+function buildAuthUserClient(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.display_name,
+    avatarUrl: user.avatar_url,
+    roleName: user.role_name,
+    isVerified: user.is_verified,
+    provider: user.provider,
+    profileCompleted: !!user.profile_completed,
+  };
+}
+
 const issueAuthResponse = async (res, user) => {
   const accessToken = signToken({ userId: user.id, email: user.email }, ACCESS_TOKEN_TTL);
   const refreshToken = generateVerificationToken(32);
@@ -43,17 +64,16 @@ const issueAuthResponse = async (res, user) => {
   return {
     token: accessToken,
     message: user.is_verified ? 'Login successful' : 'Please verify your email to unlock all features',
-    user: {
-      id: user.id,
-      email: user.email,
-      displayName: user.display_name,
-      avatarUrl: user.avatar_url,
-      roleName: user.role_name,
-      isVerified: user.is_verified,
-      provider: user.provider,
-    },
+    user: buildAuthUserClient(user),
   };
 };
+
+function attachProfileCompletionIfNeeded(body, user) {
+  if (!user.profile_completed) {
+    return { success: true, requiresProfileCompletion: true, ...body };
+  }
+  return body;
+}
 
 /**
  * Send verification email first; only then replace DB tokens. If sending fails, leave existing tokens
@@ -135,6 +155,29 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
+    const academicYear = parseInt(req.body.academicYear, 10);
+    const semester = parseInt(req.body.semester, 10);
+    const specialization = typeof req.body.specialization === 'string' ? req.body.specialization.trim() : '';
+    const indexNorm = normalizeIndexNumber(req.body.indexNumber);
+    const phoneE164 = normalizePhoneToE164(req.body.phoneNumber);
+    if (!isAllowedSpecialization(specialization) || !indexNorm || !phoneE164) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid academic or contact data'] });
+    }
+
+    const otherIdx = await userModel.findIdByIndexNumber(indexNorm);
+    if (otherIdx && (!existing || otherIdx !== existing.id)) {
+      return res.status(409).json({ error: 'Index number already exists' });
+    }
+
+    const academicPayload = {
+      academicYear,
+      semester,
+      specialization,
+      indexNumber: indexNorm,
+      phoneNumber: phoneE164,
+      displayName: typeof name === 'string' ? name.trim() : '',
+    };
+
     if (existing) {
       if (existing.is_verified) {
         return res.status(409).json({ error: 'Email already registered' });
@@ -151,9 +194,15 @@ export const register = async (req, res, next) => {
       if (existing.role_id !== role.id) {
         await userModel.updateRole(existing.id, role.id);
       }
-      if (name && typeof name === 'string' && name.trim()) {
-        await userModel.updateProfile(existing.id, { displayName: name.trim() });
-      }
+      await userModel.updateProfile(existing.id, {
+        displayName: academicPayload.displayName || null,
+        academicYear: academicPayload.academicYear,
+        semester: academicPayload.semester,
+        specialization: academicPayload.specialization,
+        indexNumber: academicPayload.indexNumber,
+        phoneNumber: academicPayload.phoneNumber,
+        profileCompleted: true,
+      });
       const result = await issueRegistrationVerification(existing.id, { resumed: true });
       if (registrationEmailUndelivered(result)) {
         await userModel.updatePasswordHash(existing.id, previousPasswordHash);
@@ -172,14 +221,32 @@ export const register = async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const created = await userModel.create({
-      email: emailNorm,
-      passwordHash,
-      roleId: role.id,
-    });
-    if (name && typeof name === 'string' && name.trim()) {
-      await userModel.updateProfile(created.id, { displayName: name.trim() });
+    let created;
+    try {
+      created = await userModel.create({
+        email: emailNorm,
+        passwordHash,
+        roleId: role.id,
+        academicYear,
+        semester,
+        specialization,
+        indexNumber: indexNorm,
+        phoneNumber: phoneE164,
+        displayName: academicPayload.displayName || null,
+      });
+    } catch (dbErr) {
+      if (dbErr && dbErr.code === '23505') {
+        return res.status(409).json({ error: 'Index number already exists' });
+      }
+      throw dbErr;
     }
+    if (!created) {
+      return res.status(500).json({ error: 'Registration failed' });
+    }
+    
+    // Notify admins of new registration in real-time
+    notificationService.emitToAdmins('admin_metric', { action: 'registration', email: emailNorm });
+
     const result = await issueRegistrationVerification(created.id, { resumed: false });
     if (registrationEmailUndelivered(result)) {
       await emailVerificationModel.deleteByUserId(created.id);
@@ -194,6 +261,9 @@ export const register = async (req, res, next) => {
     }
     return res.status(201).json(result.payload);
   } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'Index number already exists' });
+    }
     next(err);
   }
 };
@@ -217,7 +287,7 @@ export const login = async (req, res, next) => {
     }
 
     const payload = await issueAuthResponse(res, user);
-    res.json(payload);
+    res.json(attachProfileCompletionIfNeeded(payload, user));
   } catch (err) {
     next(err);
   }
@@ -367,7 +437,7 @@ export const refreshToken = async (req, res, next) => {
     await refreshTokenModel.revoke(record.id);
 
     const payload = await issueAuthResponse(res, user);
-    res.json(payload);
+    res.json(attachProfileCompletionIfNeeded(payload, user));
   } catch (err) {
     next(err);
   }
@@ -504,6 +574,9 @@ export const googleLogin = async (req, res, next) => {
           providerId: sub,
           displayName: name,
         });
+        
+        // Notify admins of new registration in real-time
+        notificationService.emitToAdmins('admin_metric', { action: 'registration', email: email });
       }
     }
 
@@ -516,9 +589,82 @@ export const googleLogin = async (req, res, next) => {
     }
 
     const resp = await issueAuthResponse(res, user);
-    res.json(resp);
+    res.json(attachProfileCompletionIfNeeded(resp, user));
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+};
+
+export const completeProfile = async (req, res, next) => {
+  try {
+    const userRow = await userModel.findById(req.user.id);
+    if (!userRow) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    if (userRow.profile_completed) {
+      return res.status(400).json({ success: false, error: 'Profile already completed', code: 'PROFILE_ALREADY_COMPLETE' });
+    }
+
+    const academicYear = parseInt(req.body.academicYear, 10);
+    const semester = parseInt(req.body.semester, 10);
+    const specialization = typeof req.body.specialization === 'string' ? req.body.specialization.trim() : '';
+    const indexNorm = normalizeIndexNumber(req.body.indexNumber);
+    const phoneE164 = normalizePhoneToE164(req.body.phoneNumber);
+
+    if (!isAllowedSpecialization(specialization) || !indexNorm || !phoneE164) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid academic or contact data'] });
+    }
+    if (Number.isNaN(academicYear) || academicYear < 1 || academicYear > 4) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Academic year must be between 1 and 4'] });
+    }
+    if (Number.isNaN(semester) || (semester !== 1 && semester !== 2)) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Semester must be 1 or 2'] });
+    }
+    if (!isValidIndexNumber(indexNorm)) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Index number must start with IT and contain only numbers after'] });
+    }
+    if (!isValidPhone(req.body.phoneNumber)) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Enter a valid Sri Lankan mobile number'] });
+    }
+
+    const otherIdx = await userModel.findOtherUserIdByIndexNumber(indexNorm, req.user.id);
+    if (otherIdx) {
+      return res.status(409).json({ error: 'Index number already exists' });
+    }
+
+    try {
+      await userModel.updateProfile(req.user.id, {
+        academicYear,
+        semester,
+        specialization,
+        indexNumber: indexNorm,
+        phoneNumber: phoneE164,
+        profileCompleted: true,
+      });
+    } catch (dbErr) {
+      if (dbErr && dbErr.code === '23505') {
+        return res.status(409).json({ error: 'Index number already exists' });
+      }
+      throw dbErr;
+    }
+
+    const prev = await userProfileModel.getByUserId(req.user.id);
+    await userProfileModel.upsert({
+      userId: req.user.id,
+      phone: phoneE164,
+      bio: prev?.bio ?? null,
+    });
+
+    const user = await userModel.findById(req.user.id);
+    res.json({
+      success: true,
+      user: buildAuthUserClient(user),
+    });
+    
+    // Notify admins of profile completion if it affects metrics
+    notificationService.emitToAdmins('admin_metric', { action: 'profile_completed', email: user.email });
+  } catch (err) {
     next(err);
   }
 };
@@ -531,6 +677,10 @@ export const getProfile = async (req, res, next) => {
     }
     const profile = await userProfileModel.getByUserId(req.user.id);
     const reliability = await bookingModel.getReliabilityByStudentId(req.user.id);
+    const phone =
+      user.phone_number && String(user.phone_number).trim()
+        ? user.phone_number
+        : profile?.phone || null;
     res.json({
       id: user.id,
       email: user.email,
@@ -540,8 +690,13 @@ export const getProfile = async (req, res, next) => {
       isVerified: user.is_verified,
       isActive: user.is_active,
       createdAt: user.created_at,
-      phone: profile?.phone,
+      phone,
       bio: profile?.bio,
+      indexNumber: user.index_number || null,
+      academicYear: user.academic_year ?? null,
+      semester: user.semester ?? null,
+      specialization: user.specialization || null,
+      profileCompleted: !!user.profile_completed,
       reliabilityScore: Number(reliability.score),
       reliabilityTotal: reliability.total,
     });
@@ -552,13 +707,91 @@ export const getProfile = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { displayName, phone, bio } = req.body;
-    const user = await userModel.updateProfile(req.user.id, { displayName: displayName?.trim() || null });
+    const {
+      displayName,
+      phone,
+      bio,
+      indexNumber,
+      academicYear,
+      semester,
+      specialization,
+    } = req.body;
+
+    const errors = [];
+    let idxNorm;
+    if (indexNumber !== undefined) {
+      idxNorm = normalizeIndexNumber(indexNumber);
+      if (!idxNorm || !isValidIndexNumber(idxNorm)) {
+        errors.push('Index number must start with IT and contain only numbers after');
+      } else {
+        const clash = await userModel.findOtherUserIdByIndexNumber(idxNorm, req.user.id);
+        if (clash) errors.push('Index number already exists');
+      }
+    }
+
+    let phoneE164;
+    if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+      if (!isValidPhone(phone)) {
+        errors.push('Enter a valid Sri Lankan mobile number');
+      } else {
+        phoneE164 = normalizePhoneToE164(phone);
+      }
+    } else if (phone !== undefined) {
+      phoneE164 = null;
+    }
+
+    if (academicYear !== undefined && academicYear !== null && academicYear !== '') {
+      const ay = parseInt(academicYear, 10);
+      if (Number.isNaN(ay) || ay < 1 || ay > 4) errors.push('Academic year must be between 1 and 4');
+    }
+
+    if (semester !== undefined && semester !== null && semester !== '') {
+      const sem = parseInt(semester, 10);
+      if (Number.isNaN(sem) || (sem !== 1 && sem !== 2)) errors.push('Semester must be 1 or 2');
+    }
+
+    if (specialization !== undefined && specialization !== null && specialization !== '') {
+      if (!isAllowedSpecialization(String(specialization))) {
+        errors.push('Invalid specialization');
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
+    }
+
+    const userPatch = {};
+    if (displayName !== undefined) userPatch.displayName = displayName?.trim() || null;
+    if (idxNorm !== undefined) userPatch.indexNumber = idxNorm;
+    if (academicYear !== undefined) {
+      userPatch.academicYear =
+        academicYear === '' || academicYear === null ? null : parseInt(academicYear, 10);
+    }
+    if (semester !== undefined) {
+      userPatch.semester = semester === '' || semester === null ? null : parseInt(semester, 10);
+    }
+    if (specialization !== undefined) {
+      userPatch.specialization = specialization ? String(specialization).trim() : null;
+    }
+    if (phoneE164 !== undefined) userPatch.phoneNumber = phoneE164;
+
+    const prevProfile = await userProfileModel.getByUserId(req.user.id);
+    const user = await userModel.updateProfile(req.user.id, userPatch);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    await userProfileModel.upsert({ userId: req.user.id, phone: phone?.trim(), bio: bio?.trim() });
+
+    await userProfileModel.upsert({
+      userId: req.user.id,
+      phone: user.phone_number ?? prevProfile?.phone ?? null,
+      bio: bio !== undefined ? bio?.trim() || null : prevProfile?.bio ?? null,
+    });
     const profile = await userProfileModel.getByUserId(req.user.id);
+    const mergedPhone =
+      user.phone_number && String(user.phone_number).trim()
+        ? user.phone_number
+        : profile?.phone || null;
+
     res.json({
       id: user.id,
       email: user.email,
@@ -568,8 +801,13 @@ export const updateProfile = async (req, res, next) => {
       isVerified: user.is_verified,
       isActive: user.is_active,
       createdAt: user.created_at,
-      phone: profile?.phone,
+      phone: mergedPhone,
       bio: profile?.bio,
+      indexNumber: user.index_number || null,
+      academicYear: user.academic_year ?? null,
+      semester: user.semester ?? null,
+      specialization: user.specialization || null,
+      profileCompleted: !!user.profile_completed,
     });
   } catch (err) {
     next(err);
@@ -578,10 +816,7 @@ export const updateProfile = async (req, res, next) => {
 
 export const uploadAvatar = async (req, res, next) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image file uploaded' });
-    }
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const { avatarUrl } = req.body;
     const user = await userModel.updateProfile(req.user.id, { avatarUrl });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

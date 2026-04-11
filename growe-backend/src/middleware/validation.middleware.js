@@ -4,9 +4,25 @@ import {
   startOfLocalDay,
   combineDateAndTimeLocal,
 } from '../utils/timeUtils.js';
+import { isAllowedSpecialization } from '../constants/specializations.js';
+import {
+  isValidIndexNumber,
+  isValidPhone,
+  normalizeIndexNumber,
+} from '../utils/academicIdentity.js';
 
 export const validateRegister = (req, res, next) => {
-  const { email, password, roleName } = req.body;
+  const {
+    email,
+    password,
+    roleName,
+    name,
+    academicYear,
+    semester,
+    specialization,
+    indexNumber,
+    phoneNumber,
+  } = req.body;
   const errors = [];
 
   if (!email || typeof email !== 'string') {
@@ -28,6 +44,39 @@ export const validateRegister = (req, res, next) => {
   const validRoles = ['student', 'tutor'];
   if (!roleName || !validRoles.includes(roleName)) {
     errors.push('Valid role (student or tutor) is required');
+  }
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    errors.push('Name is required');
+  } else if (name.trim().length > 255) {
+    errors.push('Name too long');
+  }
+
+  const ay = parseInt(academicYear, 10);
+  if (academicYear === undefined || academicYear === null || academicYear === '') {
+    errors.push('Academic year is required');
+  } else if (Number.isNaN(ay) || ay < 1 || ay > 4) {
+    errors.push('Academic year must be between 1 and 4');
+  }
+
+  const sem = parseInt(semester, 10);
+  if (semester === undefined || semester === null || semester === '') {
+    errors.push('Semester is required');
+  } else if (Number.isNaN(sem) || (sem !== 1 && sem !== 2)) {
+    errors.push('Semester must be 1 or 2');
+  }
+
+  if (!specialization || typeof specialization !== 'string' || !isAllowedSpecialization(specialization)) {
+    errors.push('Valid specialization is required');
+  }
+
+  const idx = normalizeIndexNumber(indexNumber);
+  if (!idx || !isValidIndexNumber(idx)) {
+    errors.push('Index number must start with IT and contain only numbers after');
+  }
+
+  if (!phoneNumber || typeof phoneNumber !== 'string' || !isValidPhone(phoneNumber)) {
+    errors.push('Enter a valid Sri Lankan mobile number');
   }
 
   if (errors.length > 0) {
@@ -264,10 +313,10 @@ export const validateBookingCreate = (req, res, next) => {
     const st = new Date(startTime);
     const en = new Date(endTime);
     if (Number.isNaN(st.getTime()) || Number.isNaN(en.getTime())) {
-      errors.push('Start and end must be valid datetimes');
+      errors.push('The selected time format is invalid');
     } else {
-      if (isPast(st)) errors.push('Cannot book a session in the past');
-      if (en.getTime() <= st.getTime()) errors.push('End time must be after start time');
+      if (isPast(st)) errors.push('The selected session time has already passed');
+      if (en.getTime() <= st.getTime()) errors.push('The session end time must be after the start time');
     }
   }
 
@@ -279,12 +328,12 @@ export const validateBookingCreate = (req, res, next) => {
 
 export const validateBookingStatus = (req, res, next) => {
   const { status } = req.body;
-  const validStatuses = ['confirmed', 'cancelled', 'completed', 'no_show'];
+  const validStatuses = ['confirmed', 'cancelled', 'completed', 'no_show', 'rejected', 'waiting_tutor_confirmation'];
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({
       success: false,
       error: 'Validation failed',
-      details: ['Valid status (confirmed, cancelled, completed, no_show) is required'],
+      details: [`Status must be one of: ${validStatuses.join(', ')}`],
     });
   }
   next();
@@ -352,6 +401,33 @@ export const validateMessageEdit = (req, res, next) => {
   } else if (content.length > 4000 || content.trim().length === 0) {
     errors.push('Message must be 1–4000 characters');
   }
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
+  }
+  next();
+};
+
+export const validateRating = (req, res, next) => {
+  const { rating, comment } = req.body;
+  const errors = [];
+
+  if (rating === undefined || rating === null) {
+    errors.push('Rating is required');
+  } else {
+    const r = parseInt(rating, 10);
+    if (Number.isNaN(r) || r < 1 || r > 5) {
+      errors.push('Rating must be between 1 and 5');
+    }
+  }
+
+  if (comment !== undefined && comment !== null) {
+    if (typeof comment !== 'string') {
+      errors.push('Comment must be a string');
+    } else if (comment.length > 1000) {
+      errors.push('Comment must be at most 1000 characters');
+    }
+  }
+
   if (errors.length > 0) {
     return res.status(400).json({ success: false, error: 'Validation failed', details: errors });
   }

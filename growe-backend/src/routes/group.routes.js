@@ -11,11 +11,13 @@ import {
   validateGroupCreate,
   validateGroupUpdate,
 } from '../middleware/validation.middleware.js';
+import { requireProfileComplete } from '../middleware/profileComplete.middleware.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireVerified);
+router.use(requireProfileComplete);
 
 router.post('/', requireRole('student', 'tutor', 'admin'), validateGroupCreate, groupController.create);
 router.get('/', groupController.list);

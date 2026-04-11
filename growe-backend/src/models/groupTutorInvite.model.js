@@ -55,7 +55,7 @@ export const listPendingForTutor = async (tutorUserId, { limit = 20 } = {}) => {
      FROM group_tutor_invites gti
      JOIN study_groups sg ON gti.group_id = sg.id
      JOIN users ru ON gti.requested_by = ru.id
-     WHERE gti.tutor_user_id = $1 AND gti.status = 'pending'
+     WHERE gti.tutor_user_id = $1 AND gti.status = 'pending' AND gti.slot_start >= CURRENT_TIMESTAMP
      ORDER BY gti.slot_start ASC
      LIMIT $2`,
     [tutorUserId, limit]
