@@ -1,33 +1,31 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 
-function StarRow({ value }) {
+function StarRow({ value, count }) {
   const rounded = Math.round(value);
   return (
-    <div className="text-amber-500 text-sm" aria-label={`Rating ${value} out of 5`}>
-      {'★'.repeat(rounded)}
-      <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - rounded))}</span>
+    <div className="flex items-center gap-1.5">
+      <div className="text-amber-500 text-sm" aria-label={`Rating ${value} out of 5`}>
+        {'★'.repeat(rounded)}
+        <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - rounded))}</span>
+      </div>
+      {count > 0 && (
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {value} ({count} {count === 1 ? 'review' : 'reviews'})
+        </span>
+      )}
+      {count === 0 && (
+        <span className="text-xs text-slate-400 dark:text-slate-500 italic">No reviews yet</span>
+      )}
     </div>
   );
 }
 
-function hashToRating(input) {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  const base = 3.8 + (h % 13) / 20; // 3.8 .. 4.45
-  return Math.min(5, Math.round(base * 10) / 10);
-}
-
 export default function TutorCard({ tutor, onSelect, selecting }) {
-  const rating = useMemo(() => hashToRating(String(tutor?.id || tutor?.email || 'tutor')), [tutor]);
+  const rating = tutor?.avg_rating || tutor?.avgRating || 0;
+  const ratingCount = tutor?.rating_count || tutor?.ratingCount || 0;
   const subjects = tutor?.subjects?.length ? tutor.subjects.join(', ') : '—';
-  const experienceYears = useMemo(() => {
-    const created = tutor?.created_at ? new Date(tutor.created_at) : null;
-    if (!created || Number.isNaN(created.getTime())) return 1;
-    const years = Math.max(1, Math.floor((Date.now() - created.getTime()) / (365 * 24 * 3600 * 1000)));
-    return years;
-  }, [tutor]);
 
   const name = tutor?.display_name || tutor?.name || tutor?.email || 'Tutor';
   const initials = String(name)
@@ -60,11 +58,10 @@ export default function TutorCard({ tutor, onSelect, selecting }) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <StarRow value={rating} />
+          <StarRow value={rating} count={ratingCount} />
           <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100 truncate">{name}</div>
           <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             <div>Subject: {subjects}</div>
-            <div>Experience: {experienceYears} {experienceYears === 1 ? 'year' : 'years'}</div>
           </div>
         </div>
         <div className="shrink-0">
@@ -76,4 +73,3 @@ export default function TutorCard({ tutor, onSelect, selecting }) {
     </Card>
   );
 }
-

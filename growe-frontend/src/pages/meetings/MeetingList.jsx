@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import ShareButton from '../../components/ui/ShareButton';
+import Skeleton from '../../components/ui/Skeleton';
+import { useSocket } from '../../context/SocketContext';
 import MeetingCalendar from './MeetingCalendar';
 
 const viewTabs = [
@@ -15,13 +17,35 @@ export default function MeetingList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [view, setView] = useState('list');
+  const { socket } = useSocket();
 
-  useEffect(() => {
+  const fetchMeetings = useCallback((isSilent = false) => {
+    if (!isSilent) setLoading(true);
     api.get('/meetings')
       .then(({ data }) => setMeetings(data))
-      .catch((err) => setError(err.response?.data?.error || 'Failed to load meetings'))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (!isSilent) setError(err.response?.data?.error || 'Failed to load meetings');
+      })
+      .finally(() => {
+        if (!isSilent) setLoading(false);
+      });
   }, []);
+
+  useEffect(() => {
+    fetchMeetings();
+  }, [fetchMeetings]);
+
+  // Real-time updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (notif) => {
+      if (notif.type === 'meeting') {
+        fetchMeetings(true);
+      }
+    };
+    socket.on('notification', handler);
+    return () => socket.off('notification', handler);
+  }, [socket, fetchMeetings]);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -52,7 +76,15 @@ export default function MeetingList() {
       ) : (
         <>
           {loading ? (
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-growe" />
+            <div className="grid gap-4">
+              {[1, 2, 3].map((i) => (
+                <Card key={i}>
+                  <Skeleton className="h-5 w-1/3 mb-3" />
+                  <Skeleton className="h-4 w-1/2 mb-2" />
+                  <Skeleton className="h-3 w-1/4" />
+                </Card>
+              ))}
+            </div>
           ) : error ? (
             <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
               {error}

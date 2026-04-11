@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Skeleton from '../../components/ui/Skeleton';
 import { useToast } from '../../context/ToastContext';
+import { useSocket } from '../../context/SocketContext';
 import { localDateInputMin } from '../../utils/dateInput';
 import SlotGrid from '../../components/bookings/SlotGrid';
 import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
 import BookingRejectedModal from '../../components/bookings/BookingRejectedModal';
+import RatingModal from '../../components/bookings/RatingModal';
 
 function getTodayPlus(days = 1) {
   const d = new Date();
@@ -29,6 +32,7 @@ function formatDateHeading(dateStr) {
 export default function TutorList() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { socket } = useSocket();
 
   const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
   const [slots, setSlots] = useState([]);
@@ -40,6 +44,7 @@ export default function TutorList() {
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [rejectedModal, setRejectedModal] = useState({ open: false, booking: null });
+  const [ratingModal, setRatingModal] = useState({ open: false, booking: null });
   const lastNotifiedRef = useRef({ confirmed: new Set(), rejected: new Set() });
 
   const fetchSlots = useCallback(() => {
@@ -54,12 +59,14 @@ export default function TutorList() {
       .finally(() => setSlotsLoading(false));
   }, [selectedDate, toast]);
 
-  const fetchBookings = useCallback(() => {
-    setBookingsLoading(true);
+  const fetchBookings = useCallback((isSilent = false) => {
+    if (!isSilent) setBookingsLoading(true);
     api.get('/bookings', { params: { limit: 20, offset: 0 } })
       .then(({ data }) => setBookings(Array.isArray(data) ? data : []))
       .catch(() => setBookings([]))
-      .finally(() => setBookingsLoading(false));
+      .finally(() => {
+        if (!isSilent) setBookingsLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -70,11 +77,24 @@ export default function TutorList() {
     fetchBookings();
   }, [fetchBookings]);
 
-  // Lightweight polling so students see accept/decline outcomes promptly.
+  // Real-time updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (notif) => {
+      // If a booking-related notification arrives, refresh the list immediately.
+      if (notif.type === 'booking') {
+        fetchBookings(true);
+      }
+    };
+    socket.on('notification', handler);
+    return () => socket.off('notification', handler);
+  }, [socket, fetchBookings]);
+
+  // Polling fallback (kept as safety, but increased interval)
   useEffect(() => {
     const id = setInterval(() => {
-      fetchBookings();
-    }, 15000);
+      fetchBookings(true);
+    }, 45000);
     return () => clearInterval(id);
   }, [fetchBookings]);
 
@@ -111,7 +131,7 @@ export default function TutorList() {
   const activeBookings = useMemo(
     () =>
       (Array.isArray(bookings) ? bookings : []).filter((b) =>
-        ['pending', 'waiting_tutor_confirmation', 'confirmed', 'rejected'].includes(b.status)
+        ['pending', 'waiting_tutor_confirmation', 'confirmed', 'rejected', 'cancelled', 'completed'].includes(b.status)
       ),
     [bookings]
   );
@@ -192,7 +212,11 @@ export default function TutorList() {
         </div>
 
         {slotsLoading ? (
-          <div className="text-slate-500 dark:text-slate-400">Loading slots...</div>
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+          </div>
         ) : (
           <SlotGrid slots={slots} selectedKey={selectedKey} onSelectKey={handleSlotClick} />
         )}
@@ -214,7 +238,11 @@ export default function TutorList() {
           }
         />
         {bookingsLoading ? (
-          <div className="text-slate-500 dark:text-slate-400">Loading your bookings...</div>
+          <div className="space-y-2">
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </div>
         ) : activeBookings.length === 0 ? (
           <div className="text-sm text-slate-600 dark:text-slate-400">No active bookings yet.</div>
         ) : (
@@ -241,6 +269,14 @@ export default function TutorList() {
                       Choose next step
                     </Button>
                   )}
+                  {b.status === 'completed' && !b.is_rated && (
+                    <Button size="sm" onClick={() => setRatingModal({ open: true, booking: b })}>
+                      ⭐ Rate Tutor
+                    </Button>
+                  )}
+                  {b.status === 'completed' && b.is_rated && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">✓ Rated</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -259,6 +295,16 @@ export default function TutorList() {
         onClose={() => setRejectedModal({ open: false, booking: null })}
         onSelectAnotherTutor={handleRejectedSelectAnotherTutor}
         onChooseAnotherTime={handleRejectedChooseAnotherTime}
+      />
+
+      <RatingModal
+        open={ratingModal.open}
+        onClose={() => setRatingModal({ open: false, booking: null })}
+        booking={ratingModal.booking}
+        onSubmitted={() => {
+          toast.success('Rating submitted! Thank you.');
+          fetchBookings(true);
+        }}
       />
     </div>
   );

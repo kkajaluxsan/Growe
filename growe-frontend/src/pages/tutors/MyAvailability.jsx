@@ -54,10 +54,10 @@ export default function MyAvailability() {
     setActingInviteId(inv.id);
     api
       .post(`/groups/${inv.group_id}/tutor-invites/${inv.id}/accept`)
-      .then(({ data }) => {
-        toast.success('You joined the group and the session is scheduled.');
+      .then(() => {
+        toast.success('Session accepted. View it on Tutors → Calendar or My Bookings. Join the video when the time comes.');
         loadGroupInvites();
-        if (data?.meeting?.id) navigate(`/meetings/${data.meeting.id}`);
+        navigate('/tutors?tab=schedule', { replace: true });
       })
       .catch((err) => toast.error(err.response?.data?.error || 'Could not accept'))
       .finally(() => setActingInviteId(null));

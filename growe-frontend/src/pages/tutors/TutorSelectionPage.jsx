@@ -6,12 +6,7 @@ import Button from '../../components/ui/Button';
 import TutorCard from '../../components/bookings/TutorCard';
 import { useToast } from '../../context/ToastContext';
 
-function hashToRating(input) {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  const base = 3.8 + (h % 13) / 20; // 3.8 .. 4.45
-  return Math.min(5, Math.round(base * 10) / 10);
-}
+
 
 export default function TutorSelectionPage() {
   const location = useLocation();
@@ -72,9 +67,8 @@ export default function TutorSelectionPage() {
     const withMeta = filtered.map((t) => ({
       ...t,
       _availabilityId: availabilityByTutor.get(t.id),
-      _rating: hashToRating(String(t.id || t.email || 'tutor')),
     }));
-    withMeta.sort((a, b) => (b._rating || 0) - (a._rating || 0));
+    withMeta.sort((a, b) => (b.avg_rating || 0) - (a.avg_rating || 0));
     return withMeta;
   }, [matchingSlots, tutors]);
 

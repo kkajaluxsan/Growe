@@ -49,6 +49,7 @@ export default function MeetingRoom() {
   const [videoOff, setVideoOff] = useState(false);
   const [error, setError] = useState('');
   const [joined, setJoined] = useState(false);
+  const [meetingValidated, setMeetingValidated] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('Meeting');
   const [meetingConversation, setMeetingConversation] = useState(null);
@@ -91,9 +92,29 @@ export default function MeetingRoom() {
   };
 
   useEffect(() => {
+    let active = true;
     api.get(`/meetings/${id}`)
-      .then(({ data }) => setMeetingTitle(data?.title || 'Meeting'))
-      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load meeting'));
+      .then(({ data }) => {
+        if (!active) return;
+        setMeetingTitle(data?.title || 'Meeting');
+        if (data?.ended_at) {
+          setError('This meeting has already ended.');
+        } else if (data?.scheduled_at) {
+          const schedTime = new Date(data.scheduled_at).getTime();
+          // Expiry: 24 hours after the scheduled start time
+          if (Date.now() - schedTime > 24 * 60 * 60 * 1000) {
+            setError('This scheduled meeting point has expired.');
+          } else {
+            setMeetingValidated(true);
+          }
+        } else {
+          setMeetingValidated(true);
+        }
+      })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.error || 'Failed to load meeting');
+      });
+    return () => { active = false; };
   }, [id, toast]);
 
   useEffect(() => {
@@ -105,7 +126,7 @@ export default function MeetingRoom() {
   }, [id, user, toast]);
 
   useEffect(() => {
-    if (!socket || !user) return;
+    if (!socket || !user || !meetingValidated || error) return;
 
     const initMedia = async () => {
       try {
@@ -199,7 +220,7 @@ export default function MeetingRoom() {
       Object.keys(peersRef.current).forEach((k) => delete peersRef.current[k]);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [socket, user, id, navigate]);
+  }, [socket, user, id, navigate, meetingValidated, error]);
 
   const replaceVideoTrack = (newTrack) => {
     const stream = localStreamRef.current;
