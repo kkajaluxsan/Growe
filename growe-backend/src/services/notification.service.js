@@ -75,6 +75,18 @@ export async function createNotification({
   return row;
 }
 
+/** Broadcast a real-time event to all admins without persisting a notification row. */
+export function emitToAdmins(type, metadata = {}) {
+  const io = getNotificationIo();
+  if (io) {
+    io.to('admin-dashboard').emit('notification', {
+      type,
+      metadata,
+      createdAt: new Date(),
+    });
+  }
+}
+
 export async function notifyAssignmentCreated({ userId, assignment }) {
   const user = await userModel.findById(userId);
   const name = user?.display_name || user?.email?.split('@')[0] || 'there';
@@ -361,6 +373,29 @@ export async function notifyBookingImminentInApp({ userId, startTime, role, othe
     title: 'Session starting soon',
     message: `Starts at ${formatted} (~10 min) — ${who}`,
     metadata: { event: 'booking_imminent', bookingId },
+  });
+}
+
+/** Prompt the student to rate their tutor after a booking is completed. */
+export async function notifyRatingPrompt({ studentUserId, tutorEmail, bookingId }) {
+  return createNotification({
+    userId: studentUserId,
+    type: TYPES.BOOKING,
+    title: 'Rate your tutor',
+    message: `Your session with ${tutorEmail || 'your tutor'} is complete. Tap to rate your experience!`,
+    metadata: { event: 'rating_prompt', bookingId },
+  });
+}
+
+/** Notify the tutor when a student submits a rating. */
+export async function notifyNewTutorRating({ tutorUserId, studentEmail, rating }) {
+  const stars = '⭐'.repeat(rating);
+  return createNotification({
+    userId: tutorUserId,
+    type: TYPES.BOOKING,
+    title: 'New rating received',
+    message: `${studentEmail || 'A student'} rated you ${stars} (${rating}/5)`,
+    metadata: { event: 'new_rating', rating },
   });
 }
 

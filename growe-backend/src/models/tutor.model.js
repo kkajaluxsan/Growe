@@ -74,7 +74,7 @@ export const findAvailabilityById = async (id) => {
 
 export const listAvailabilityByTutor = async (tutorId, { fromDate, toDate } = {}) => {
   let sql = `SELECT id, tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at
-             FROM tutor_availability WHERE tutor_id = $1`;
+             FROM tutor_availability WHERE tutor_id = $1 AND available_date::date >= CURRENT_DATE`;
   const params = [tutorId];
   let i = 2;
   if (fromDate) { sql += ` AND available_date::date >= $${i}::date`; params.push(fromDate); i++; }
@@ -99,7 +99,11 @@ export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } =
   return rows;
 };
 
-export const listAvailabilityForTutorsOnDate = async (dateStr) => {
+export const listAvailabilityForTutorsOnDate = async (dateStr, { specialization } = {}) => {
+  const spec = typeof specialization === 'string' ? specialization.trim() : '';
+  if (!spec) {
+    return [];
+  }
   const { rows } = await query(
     `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
             tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects,
@@ -108,10 +112,12 @@ export const listAvailabilityForTutorsOnDate = async (dateStr) => {
      JOIN tutor_profiles tp ON ta.tutor_id = tp.id
      JOIN users u ON tp.user_id = u.id
      WHERE tp.is_suspended = false
+       AND u.specialization IS NOT NULL
+       AND u.specialization = $2
        AND ta.available_date::date = $1::date
        AND ta.available_date::date >= CURRENT_DATE
      ORDER BY ta.start_time`,
-    [dateStr]
+    [dateStr, spec]
   );
   return rows;
 };
@@ -121,12 +127,20 @@ export const deleteAvailability = async (id, tutorId) => {
   return rowCount > 0;
 };
 
-export const listTutorProfiles = async ({ limit = 50, offset = 0 } = {}) => {
+export const listTutorProfiles = async ({ limit = 50, offset = 0, specialization } = {}) => {
+  const spec = typeof specialization === 'string' ? specialization.trim() : '';
+  if (!spec) {
+    return [];
+  }
   const { rows } = await query(
     `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.is_suspended, u.email
-     FROM tutor_profiles tp JOIN users u ON tp.user_id = u.id WHERE tp.is_suspended = false
+     FROM tutor_profiles tp
+     JOIN users u ON tp.user_id = u.id
+     WHERE tp.is_suspended = false
+       AND u.specialization IS NOT NULL
+       AND u.specialization = $3
      ORDER BY tp.created_at DESC LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    [limit, offset, spec]
   );
   return rows;
 };

@@ -6,10 +6,12 @@ import { doTimesOverlap, isPast } from '../utils/timeUtils.js';
 import { generateSlots } from '../utils/slotGenerator.js';
 
 const VALID_STATUS_TRANSITIONS = {
-  pending: ['confirmed', 'cancelled'],
+  pending: ['confirmed', 'cancelled', 'rejected', 'waiting_tutor_confirmation'],
+  waiting_tutor_confirmation: ['confirmed', 'rejected', 'cancelled'],
   confirmed: ['completed', 'cancelled', 'no_show'],
   completed: [],
   cancelled: [],
+  rejected: [],
   no_show: [],
 };
 
@@ -167,6 +169,20 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
     Promise.resolve()
       .then(() => notificationService.notifyBookingStatusChanged(full, newStatus))
       .catch(() => {});
+
+    // Prompt the student to rate the tutor after a completed session
+    if (newStatus === 'completed') {
+      Promise.resolve()
+        .then(async () => {
+          const tutorUser = await (await import('../models/user.model.js')).findById(full.tutor_user_id);
+          return notificationService.notifyRatingPrompt({
+            studentUserId: full.student_id,
+            tutorEmail: tutorUser?.email,
+            bookingId: full.id,
+          });
+        })
+        .catch(() => {});
+    }
   }
   return updated;
 };

@@ -21,7 +21,7 @@ export const findById = async (id) => {
   return rows[0] || null;
 };
 
-export const listByStudent = async (studentId, { status, limit = 50, offset = 0 } = {}) => {
+export const listByStudent = async (studentId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
                    ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
@@ -29,13 +29,14 @@ export const listByStudent = async (studentId, { status, limit = 50, offset = 0 
   const params = [studentId];
   let i = 2;
   if (status) { sql += ` AND b.status = $${i}`; params.push(status); i++; }
+  if (filterPast) { sql += ' AND b.start_time >= CURRENT_TIMESTAMP'; }
   sql += ` ORDER BY b.start_time DESC LIMIT $${i} OFFSET $${i + 1}`;
   params.push(limit, offset);
   const { rows } = await query(sql, params);
   return rows;
 };
 
-export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0 } = {}) => {
+export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
                    ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON b.student_id = u.id
@@ -43,6 +44,7 @@ export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0 
   const params = [tutorUserId];
   let i = 2;
   if (status) { sql += ` AND b.status = $${i}`; params.push(status); i++; }
+  if (filterPast) { sql += ' AND b.start_time >= CURRENT_TIMESTAMP'; }
   sql += ` ORDER BY b.start_time DESC LIMIT $${i} OFFSET $${i + 1}`;
   params.push(limit, offset);
   const { rows } = await query(sql, params);

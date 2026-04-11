@@ -7,25 +7,30 @@ import {
   validateTutorProfile,
   validateAvailabilityCreate,
 } from '../middleware/validation.middleware.js';
+import { requireProfileComplete } from '../middleware/profileComplete.middleware.js';
 
 const router = Router();
 
-router.get('/list', authenticate, requireVerified, tutorController.listTutors);
-router.get('/slots', authenticate, requireVerified, tutorController.getAvailableSlots);
-router.get('/available', authenticate, requireVerified, tutorController.getAvailableTutorsByDate);
+router.get('/list', authenticate, requireVerified, requireProfileComplete, tutorController.listTutors);
+router.get('/slots', authenticate, requireVerified, requireProfileComplete, tutorController.getAvailableSlots);
+router.get('/available', authenticate, requireVerified, requireProfileComplete, tutorController.getAvailableTutorsByDate);
 router.get(
   '/available-for-slot',
   authenticate,
   requireVerified,
+  requireProfileComplete,
   requireRole('student', 'tutor'),
   tutorController.getAvailableForGroupSlot
 );
+router.get('/:id/ratings', authenticate, requireVerified, tutorController.getTutorRatings);
 
 router.use(authenticate);
 router.use(requireVerified);
+router.use(requireProfileComplete);
 router.use(requireRole('tutor'));
 
 router.get('/group-invites', tutorController.listPendingGroupInvites);
+router.get('/my-ratings', tutorController.getMyRatings);
 
 router.post('/profile', validateTutorProfile, tutorController.createProfile);
 router.get('/profile', tutorController.getProfile);

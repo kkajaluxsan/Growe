@@ -1,6 +1,8 @@
 import * as tutorModel from '../models/tutor.model.js';
 import * as groupTutorInviteModel from '../models/groupTutorInvite.model.js';
+import * as userModel from '../models/user.model.js';
 import * as availabilityService from '../services/availability.service.js';
+import * as ratingModel from '../models/rating.model.js';
 
 export const createProfile = async (req, res, next) => {
   try {
@@ -146,11 +148,84 @@ export const getAvailableTutorsByDate = async (req, res, next) => {
 
 export const listTutors = async (req, res, next) => {
   try {
+    const viewer = await userModel.findById(req.user.id);
+    const specialization = viewer?.specialization ? String(viewer.specialization).trim() : '';
     const tutors = await tutorModel.listTutorProfiles({
       limit: parseInt(req.query.limit, 10) || 50,
       offset: parseInt(req.query.offset, 10) || 0,
+      specialization,
+    });
+
+    // Attach average rating to each tutor
+    const tutorUserIds = tutors.map((t) => t.user_id).filter(Boolean);
+    const ratingsMap = await ratingModel.getAverageByTutorIds(tutorUserIds);
+    const enriched = tutors.map((t) => {
+      const ratingInfo = ratingsMap.get(t.user_id) || { average: 0, count: 0 };
+      return { ...t, avg_rating: ratingInfo.average, rating_count: ratingInfo.count };
+    });
+
+    res.json(enriched);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** For group creation: tutors free at an exact slot (start/end ISO). */
+export const getAvailableForGroupSlot = async (req, res, next) => {
+  try {
+    const { start, end, subject, q } = req.query;
+    const tutors = await availabilityService.getAvailableTutorsForSlot({
+      startISO: typeof start === 'string' ? start : '',
+      endISO: typeof end === 'string' ? end : '',
+      subject: typeof subject === 'string' ? subject : '',
+      q: typeof q === 'string' ? q : '',
+      forUserId: req.user.id,
     });
     res.json(tutors);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+};
+
+/** Pending group tutor invites for the logged-in tutor. */
+export const listPendingGroupInvites = async (req, res, next) => {
+  try {
+    const rows = await groupTutorInviteModel.listPendingForTutor(req.user.id, {
+      limit: Math.min(parseInt(req.query.limit, 10) || 20, 50),
+    });
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** Get ratings for a specific tutor (by user id). */
+export const getTutorRatings = async (req, res, next) => {
+  try {
+    const tutorUserId = req.params.id;
+    const avg = await ratingModel.getAverageByTutorId(tutorUserId);
+    const reviews = await ratingModel.listByTutorId(tutorUserId, {
+      limit: Math.min(parseInt(req.query.limit, 10) || 20, 50),
+      offset: parseInt(req.query.offset, 10) || 0,
+    });
+    res.json({ average: parseFloat(avg.average), count: avg.count, reviews });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** Get the logged-in tutor's own ratings summary + reviews. */
+export const getMyRatings = async (req, res, next) => {
+  try {
+    const avg = await ratingModel.getAverageByTutorId(req.user.id);
+    const reviews = await ratingModel.listByTutorId(req.user.id, {
+      limit: Math.min(parseInt(req.query.limit, 10) || 50, 100),
+      offset: parseInt(req.query.offset, 10) || 0,
+    });
+    res.json({ average: parseFloat(avg.average), count: avg.count, reviews });
   } catch (err) {
     next(err);
   }

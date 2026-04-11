@@ -1,5 +1,6 @@
 import * as tutorModel from '../models/tutor.model.js';
 import * as bookingModel from '../models/booking.model.js';
+import * as userModel from '../models/user.model.js';
 import { generateSlots } from '../utils/slotGenerator.js';
 import { isPast, parseYYYYMMDDLocal, startOfLocalDay } from '../utils/timeUtils.js';
 import * as groupModel from '../models/group.model.js';
@@ -97,7 +98,9 @@ export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
     throw err;
   }
 
-  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date);
+  const viewer = await userModel.findById(userId);
+  const specialization = viewer?.specialization ? String(viewer.specialization).trim() : '';
+  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date, { specialization });
 
   const byTutor = new Map();
 
@@ -167,7 +170,7 @@ function tutorSearchMatches(t, q) {
  * Tutors with a free slot exactly matching [startISO, endISO] on the same calendar day.
  * Optional `subject` boosts sort order; `q` filters name/subject/skills (client can also filter).
  */
-export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q } = {}) => {
+export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, forUserId } = {}) => {
   if (!startISO || !endISO) {
     const err = new Error('start and end (ISO timestamps) are required');
     err.statusCode = 400;
@@ -196,7 +199,12 @@ export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q }
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
-  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(dateStr);
+  let specialization = '';
+  if (forUserId) {
+    const u = await userModel.findById(forUserId);
+    specialization = u?.specialization ? String(u.specialization).trim() : '';
+  }
+  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(dateStr, { specialization });
   const candidates = [];
 
   for (const av of availabilities) {
