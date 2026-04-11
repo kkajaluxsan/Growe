@@ -57,7 +57,7 @@ Frontend: http://localhost:5173. Set Vite proxy target to your backend port if d
 
 ### 4. Default Admin
 
-After seeds: **admin@growe.edu** / **admin123**
+After seeds: **admin@growe.edu*** / **admin123**
 
 ## Auth: Email verification + Google sign-in
 
