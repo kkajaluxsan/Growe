@@ -54,6 +54,7 @@ async function assertTutorInviteIsValid({ creatorId, tutorInvite }) {
     endISO: slotEnd,
     subject: subjectLine || '',
     q: '',
+    forUserId: creatorId,
   });
   const startMs = new Date(slotStart).getTime();
   const endMs = new Date(slotEnd).getTime();
@@ -346,9 +347,13 @@ export const searchUsersToAdd = async (req, res, next) => {
   try {
     const q = typeof req.query?.q === 'string' ? req.query.q : '';
     if (!q.trim()) return res.json([]);
+    const searcher = await userModel.findById(req.user.id);
+    const specialization = searcher?.specialization ? String(searcher.specialization).trim() : '';
     const users = await groupModel.searchUsersNotInGroup(req.params.id, q, {
       limit: Math.min(parseInt(req.query.limit, 10) || 10, 25),
       offset: parseInt(req.query.offset, 10) || 0,
+      searcherUserId: req.user.id,
+      specialization,
     });
     res.json(users);
   } catch (err) {

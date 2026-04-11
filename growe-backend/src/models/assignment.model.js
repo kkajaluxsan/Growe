@@ -58,18 +58,19 @@ function buildListFilters({ status, priority, deadlineAfter, deadlineBefore }, p
 
 export const listByUser = async (
   userId,
-  { status, priority, deadlineAfter, deadlineBefore, sortBy = 'deadline', sortOrder = 'asc', limit = 20, offset = 0 } = {}
+  { status, priority, deadlineAfter, deadlineBefore, sortBy = 'deadline', sortOrder = 'asc', limit = 20, offset = 0, filterPast = true } = {}
 ) => {
-  const { fragments, params, nextIndex } = buildListFilters({ status, priority, deadlineAfter, deadlineBefore });
+  const dAfter = filterPast ? (deadlineAfter || new Date().toISOString()) : deadlineAfter;
+  const { fragments, params, nextIndex } = buildListFilters({ status, priority, deadlineAfter: dAfter, deadlineBefore });
   const validSort = ['deadline', 'priority', 'created_at', 'title'];
   const sort = validSort.includes(sortBy) ? sortBy : 'deadline';
   const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
-
+ 
   let sql = `SELECT id, user_id, title, description, status, priority, deadline, visible_to_all, created_at, updated_at
      FROM assignments WHERE (user_id = $1 OR visible_to_all = TRUE) AND ${activeClause}`;
   sql += ` ${fragments.join(' ')}`;
   sql += ` ORDER BY ${sort} ${order} NULLS LAST LIMIT $${nextIndex} OFFSET $${nextIndex + 1}`;
-
+ 
   const allParams = [userId, ...params, limit, offset];
   const { rows } = await query(sql, allParams);
   return rows;

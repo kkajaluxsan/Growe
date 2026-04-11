@@ -1,7 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
-export default function ProtectedRoute({ children, requireVerified = false, roles = [] }) {
+export default function ProtectedRoute({
+  children,
+  requireVerified = false,
+  roles = [],
+  /** When true, do not redirect incomplete profiles here (used for /complete-profile). */
+  skipProfileComplete = false,
+}) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -19,6 +25,10 @@ export default function ProtectedRoute({ children, requireVerified = false, role
 
   if (requireVerified && !user.isVerified) {
     return <Navigate to="/verify-email" state={{ from: location }} replace />;
+  }
+
+  if (!skipProfileComplete && user.profileCompleted === false) {
+    return <Navigate to="/complete-profile" state={{ from: location }} replace />;
   }
 
   if (roles.length > 0) {

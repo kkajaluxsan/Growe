@@ -1,18 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useSocket } from '../../context/SocketContext';
 import { localDateInputMin } from '../../utils/dateInput';
 import TutorRequestPanel from '../../components/bookings/TutorRequestPanel';
 import GroupTutorInvitePanel from '../../components/bookings/GroupTutorInvitePanel';
 import TutorBookingCalendar from '../../components/bookings/TutorBookingCalendar';
 
 export default function TutorDashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { socket } = useSocket();
   const [profile, setProfile] = useState(null);
   const [availability, setAvailability] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('profile');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'bookings' || tab === 'schedule') {
+      setActiveTab(tab);
+      const next = new URLSearchParams(searchParams);
+      next.delete('tab');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     loadProfile();
@@ -49,13 +62,26 @@ export default function TutorDashboard() {
       });
   };
 
-  const loadBookings = () => {
+  const loadBookings = useCallback((isSilent = false) => {
     api.get('/bookings')
       .then(({ data }) => setBookings(data))
       .catch(() => {
         setBookings([]);
       });
-  };
+  }, []);
+
+  // Real-time updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (notif) => {
+      // Refresh bookings if a relevant event occurs
+      if (['booking', 'groupTutorInvite'].includes(notif.type)) {
+        loadBookings(true);
+      }
+    };
+    socket.on('notification', handler);
+    return () => socket.off('notification', handler);
+  }, [socket, loadBookings]);
 
   if (loading) {
     return <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800" />;
@@ -93,6 +119,13 @@ export default function TutorDashboard() {
         >
           My Bookings
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('ratings')}
+          className={`rounded px-4 py-2 ${activeTab === 'ratings' ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}
+        >
+          My Ratings
+        </button>
       </div>
 
       {activeTab === 'profile' && (
@@ -103,8 +136,16 @@ export default function TutorDashboard() {
       )}
       {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
       {activeTab === 'bookings' && (
-        <TutorBookingsSection bookings={bookings} onUpdate={loadBookings} />
+        <TutorBookingsSection
+          bookings={bookings}
+          onUpdate={loadBookings}
+          onAfterGroupInviteAccept={() => {
+            loadBookings();
+            setActiveTab('schedule');
+          }}
+        />
       )}
+      {activeTab === 'ratings' && <TutorRatingsSection />}
     </div>
   );
 }
@@ -296,9 +337,8 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   );
 }
 
-function TutorBookingsSection({ bookings, onUpdate }) {
+function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [busyId, setBusyId] = useState('');
   const [groupInvites, setGroupInvites] = useState([]);
   const [invitesLoading, setInvitesLoading] = useState(true);
@@ -333,11 +373,11 @@ function TutorBookingsSection({ bookings, onUpdate }) {
     setActingInviteId(inv.id);
     api
       .post(`/groups/${inv.group_id}/tutor-invites/${inv.id}/accept`)
-      .then(({ data }) => {
-        toast.success('You joined the group. Session scheduled.');
+      .then(() => {
+        toast.success('Session accepted. It’s on your Calendar and in My Bookings. Open the meeting when it’s time.');
         loadGroupInvites();
         onUpdate();
-        if (data?.meeting?.id) navigate(`/meetings/${data.meeting.id}`);
+        onAfterGroupInviteAccept?.();
       })
       .catch((err) => toast.error(err.response?.data?.error || 'Could not accept'))
       .finally(() => setActingInviteId(null));
@@ -411,6 +451,101 @@ function TutorBookingsSection({ bookings, onUpdate }) {
           ))}
         </tbody>
       </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TutorRatingsSection() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/tutors/my-ratings', { skipGlobalErrorToast: true })
+      .then(({ data }) => setData(data))
+      .catch(() => setData({ average: 0, count: 0, reviews: [] }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800" />;
+  }
+
+  const { average = 0, count = 0, reviews = [] } = data || {};
+  const roundedAvg = Math.round(average);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary card */}
+      <div className="bg-white dark:bg-slate-900 rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">Rating Summary</h2>
+        <div className="flex items-center gap-6">
+          <div className="text-center">
+            <div className="text-5xl font-bold text-slate-900 dark:text-slate-100">
+              {count > 0 ? average.toFixed(1) : '—'}
+            </div>
+            <div className="text-amber-500 text-2xl mt-1">
+              {'★'.repeat(roundedAvg)}
+              <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - roundedAvg))}</span>
+            </div>
+            <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              {count} {count === 1 ? 'review' : 'reviews'}
+            </div>
+          </div>
+          {count > 0 && (
+            <div className="flex-1">
+              {[5, 4, 3, 2, 1].map((star) => {
+                const starCount = reviews.filter((r) => r.rating === star).length;
+                const pct = count > 0 ? (starCount / count) * 100 : 0;
+                return (
+                  <div key={star} className="flex items-center gap-2 text-sm">
+                    <span className="w-4 text-right text-slate-600 dark:text-slate-400">{star}</span>
+                    <span className="text-amber-500">★</span>
+                    <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="w-6 text-right text-xs text-slate-500 dark:text-slate-400">{starCount}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Individual reviews */}
+      <div className="bg-white dark:bg-slate-900 rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">Student Reviews</h2>
+        {reviews.length === 0 ? (
+          <p className="text-gray-600 dark:text-slate-400">No reviews yet. Ratings will appear here after students rate completed sessions.</p>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((r) => (
+              <div
+                key={r.id}
+                className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-500 text-sm">{'★'.repeat(r.rating)}<span className="text-slate-300 dark:text-slate-600">{'★'.repeat(5 - r.rating)}</span></span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {r.student_display_name || r.student_email || 'Student'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {new Date(r.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                  </span>
+                </div>
+                {r.comment && (
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{r.comment}</p>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

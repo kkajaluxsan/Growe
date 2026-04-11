@@ -2,6 +2,46 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
+import { useAuth } from '../../context/AuthContext';
+
+function parseNotificationMetadata(n) {
+  const m = n?.metadata;
+  if (m == null) return {};
+  if (typeof m === 'string') {
+    try {
+      return JSON.parse(m);
+    } catch {
+      return {};
+    }
+  }
+  return typeof m === 'object' ? m : {};
+}
+
+/** Returns a client path to open for this notification, or null if none. */
+function getNotificationPath(n, user) {
+  const meta = parseNotificationMetadata(n);
+  const t = n?.type;
+  const isTutor = user?.roleName === 'tutor';
+
+  if (t === 'assignment' && meta.assignmentId) {
+    return `/assignments/${meta.assignmentId}`;
+  }
+  if (t === 'booking') {
+    return isTutor ? '/tutors?tab=bookings' : '/tutors';
+  }
+  if (t === 'meeting' && meta.meetingId) {
+    return `/meetings/${meta.meetingId}`;
+  }
+  if (t === 'group') {
+    // Tutors are not group members until they accept; group detail would 403. Send them to dashboard invites/bookings.
+    if (meta.event === 'group_tutor_invite') return '/tutors?tab=bookings';
+    if (meta.groupId) return `/groups/${meta.groupId}`;
+    if (meta.meetingId) return `/meetings/${meta.meetingId}`;
+    if (meta.event === 'group_tutor_invite_rejected') return '/groups';
+  }
+
+  return null;
+}
 
 function parseNotificationMetadata(n) {
   const m = n?.metadata;
@@ -41,6 +81,7 @@ function getNotificationPath(n) {
 
 export default function NotificationBell() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { socket } = useSocket();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -104,7 +145,7 @@ export default function NotificationBell() {
   };
 
   const handleItemClick = async (n) => {
-    const path = getNotificationPath(n);
+    const path = getNotificationPath(n, user);
     if (!n.is_read) {
       await markRead(n.id);
     }
@@ -163,7 +204,7 @@ export default function NotificationBell() {
               <p className="p-4 text-sm text-slate-500 text-center">No notifications yet.</p>
             )}
             {items.map((n) => {
-              const path = getNotificationPath(n);
+              const path = getNotificationPath(n, user);
               return (
               <button
                 key={n.id}

@@ -4,7 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 import Badge from '../ui/Badge';
 import Avatar from '../ui/Avatar';
 
-const navItems = [
+const baseNavItems = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/groups', label: 'Groups' },
   { to: '/messages', label: 'Messages' },
@@ -16,6 +16,10 @@ const navItems = [
 
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
+  const isAdmin = user?.roleName === 'admin';
+  const navItems = isAdmin
+    ? baseNavItems.filter((item) => !['/groups', '/tutors', '/meetings'].includes(item.to))
+    : baseNavItems;
   const { dark, toggleTheme } = useTheme();
   const location = useLocation();
 

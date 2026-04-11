@@ -77,12 +77,8 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const register = async (email, password, roleName) => {
-    const { data } = await api.post(
-      '/auth/register',
-      { email, password, roleName },
-      { skipGlobalErrorToast: true }
-    );
+  const register = async (payload) => {
+    const { data } = await api.post('/auth/register', payload, { skipGlobalErrorToast: true });
     return data;
   };
 

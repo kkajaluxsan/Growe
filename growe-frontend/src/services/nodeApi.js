@@ -40,6 +40,7 @@ function isCsrfExemptMutation(config) {
     url.includes('/auth/login') ||
     url.includes('/auth/register') ||
     url.includes('/auth/google') ||
+    url.includes('/auth/complete-profile') ||
     url.includes('/auth/forgot-password') ||
     url.includes('/auth/reset-password') ||
     url.includes('/auth/request-verification-email')

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useSocket } from '../../context/SocketContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -16,36 +17,48 @@ const tabClass = (active) =>
 export default function AdminDashboard() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
+  const { socket } = useSocket();
   const [users, setUsers] = useState([]);
-  const [bookings, setBookings] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
-  const [meetings, setMeetings] = useState([]);
-  const [reliabilityRanking, setReliabilityRanking] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [tab, setTab] = useState('users');
   const [loading, setLoading] = useState(true);
   const [confirmModal, setConfirmModal] = useState(null);
 
-  useEffect(() => {
-    api.get('/admin/metrics')
+  const fetchMetrics = useCallback(() => {
+    api
+      .get('/admin/metrics')
       .then(({ data }) => setMetrics(data))
       .catch((err) => toast.error(err.response?.data?.error || 'Failed to load metrics'));
   }, [toast]);
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     setLoading(true);
     if (tab === 'users') {
       api.get('/admin/users').then(({ data }) => setUsers(data)).finally(() => setLoading(false));
-    } else if (tab === 'bookings') {
-      api.get('/admin/bookings/logs').then(({ data }) => setBookings(data)).finally(() => setLoading(false));
     } else if (tab === 'audit') {
       api.get('/admin/audit-log').then(({ data }) => setAuditLog(data)).finally(() => setLoading(false));
-    } else if (tab === 'meetings') {
-      api.get('/admin/meetings').then(({ data }) => setMeetings(data)).finally(() => setLoading(false));
-    } else if (tab === 'reliability') {
-      api.get('/admin/reliability-ranking').then(({ data }) => setReliabilityRanking(Array.isArray(data) ? data : [])).finally(() => setLoading(false));
     } else setLoading(false);
   }, [tab]);
+
+  useEffect(() => {
+    fetchMetrics();
+    fetchData();
+  }, [fetchMetrics, fetchData]);
+
+  // Real-time updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (notif) => {
+      // Refresh metrics or specific data based on event type
+      if (['admin_metric', 'user_update', 'audit_log'].includes(notif.type)) {
+        fetchMetrics();
+        fetchData();
+      }
+    };
+    socket.on('notification', handler);
+    return () => socket.off('notification', handler);
+  }, [socket, fetchMetrics, fetchData]);
 
   const handleToggleActive = async (userId, isActive) => {
     try {
@@ -65,10 +78,6 @@ export default function AdminDashboard() {
     setConfirmModal({ type: 'remove', userId, userEmail, message: `Permanently remove "${userEmail}"? This cannot be undone.` });
   };
 
-  const handleTerminateMeeting = (meetingId) => {
-    setConfirmModal({ type: 'terminate', meetingId, message: 'Force end this meeting? All participants will be disconnected.' });
-  };
-
   const onConfirmModal = async () => {
     if (!confirmModal) return;
     try {
@@ -79,10 +88,6 @@ export default function AdminDashboard() {
         await api.delete(`/admin/users/${confirmModal.userId}`);
         setUsers((prev) => prev.filter((u) => u.id !== confirmModal.userId));
         toast.success('User removed');
-      } else if (confirmModal.type === 'terminate') {
-        await api.post(`/admin/meetings/${confirmModal.meetingId}/terminate`);
-        setMeetings((prev) => prev.filter((m) => m.id !== confirmModal.meetingId));
-        toast.success('Meeting terminated');
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed');
@@ -92,7 +97,10 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6">Admin Dashboard</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Admin dashboard</h1>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+        All data below comes from the same application database as student and tutor accounts.
+      </p>
 
       {metrics && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -101,24 +109,25 @@ export default function AdminDashboard() {
             <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.totalUsers}</p>
           </Card>
           <Card>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Active users</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Active &amp; verified</p>
             <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.activeUsers}</p>
           </Card>
           <Card>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Bookings today</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.bookingsToday}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Verified users</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.verifiedUsers}</p>
           </Card>
           <Card>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Active meetings</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.activeMeetings}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Profile incomplete</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 mt-1">{metrics.profileIncomplete}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Verified but missing academic profile</p>
           </Card>
         </div>
       )}
 
       <div className="flex flex-wrap gap-2 mb-6">
-        {['users', 'bookings', 'meetings', 'reliability', 'audit'].map((t) => (
-          <button key={t} onClick={() => { setTab(t); setLoading(true); }} className={tabClass(tab === t)}>
-            {t === 'audit' ? 'Audit log' : t === 'bookings' ? 'Booking logs' : t === 'meetings' ? 'Active meetings' : t === 'reliability' ? 'Reliability ranking' : 'Users'}
+        {['users', 'audit'].map((t) => (
+          <button key={t} type="button" onClick={() => { setTab(t); setLoading(true); }} className={tabClass(tab === t)}>
+            {t === 'audit' ? 'Audit log' : 'Users'}
           </button>
         ))}
       </div>
@@ -128,117 +137,64 @@ export default function AdminDashboard() {
       ) : tab === 'users' ? (
         <Card padding={false}>
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+            <table className="min-w-full text-sm">
               <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Email</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Role</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Verified</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Active</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Actions</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Email</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Name</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Role</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Provider</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Index</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Spec.</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Year / Sem</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Phone</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Profile</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Verified</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Active</th>
+                  <th className="px-3 py-3 text-left font-medium text-slate-700 dark:text-slate-300">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {users.map((u) => (
                   <tr key={u.id} className="bg-white dark:bg-slate-800">
-                    <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{u.email}</td>
-                    <td className="px-4 py-3"><Badge>{u.role_name}</Badge></td>
-                    <td className="px-4 py-3">{u.is_verified ? <Badge variant="success">Yes</Badge> : <Badge variant="warning">No</Badge>}</td>
-                    <td className="px-4 py-3">{u.is_active ? 'Yes' : 'No'}</td>
-                    <td className="px-4 py-3 flex flex-wrap gap-2">
+                    <td className="px-3 py-2 text-slate-900 dark:text-slate-100 whitespace-nowrap">{u.email}</td>
+                    <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[140px] truncate" title={u.display_name || ''}>
+                      {u.display_name || '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge>{u.role_name}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{u.provider || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{u.index_number || '—'}</td>
+                    <td className="px-3 py-2">{u.specialization || '—'}</td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
+                      {u.academic_year != null && u.semester != null ? `${u.academic_year} / ${u.semester}` : '—'}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{u.phone_number || '—'}</td>
+                    <td className="px-3 py-2">
+                      {u.profile_completed ? <Badge variant="success">Complete</Badge> : <Badge variant="warning">Incomplete</Badge>}
+                    </td>
+                    <td className="px-3 py-2">{u.is_verified ? <Badge variant="success">Yes</Badge> : <Badge variant="warning">No</Badge>}</td>
+                    <td className="px-3 py-2">{u.is_active ? 'Yes' : 'No'}</td>
+                    <td className="px-3 py-2 flex flex-wrap gap-2">
                       <Button size="sm" variant="ghost" onClick={() => handleToggleActive(u.id, u.is_active)}>
                         {u.is_active ? 'Deactivate' : 'Activate'}
                       </Button>
                       {u.role_name === 'tutor' && (
-                        <Button size="sm" variant="secondary" onClick={() => handleSuspendTutor(u.id)}>Suspend</Button>
+                        <Button size="sm" variant="secondary" onClick={() => handleSuspendTutor(u.id)}>
+                          Suspend
+                        </Button>
                       )}
-                      <Button size="sm" variant="danger" onClick={() => handleRemoveUser(u.id, u.email)} disabled={currentUser?.id === u.id} title={currentUser?.id === u.id ? 'Cannot remove yourself' : undefined}>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => handleRemoveUser(u.id, u.email)}
+                        disabled={currentUser?.id === u.id}
+                        title={currentUser?.id === u.id ? 'Cannot remove yourself' : undefined}
+                      >
                         Remove
                       </Button>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : tab === 'meetings' ? (
-        <Card padding={false}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Group</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Title</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Started</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {meetings.length === 0 && !loading && (
-                  <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No active meetings</td></tr>
-                )}
-                {meetings.map((m) => (
-                  <tr key={m.id} className="bg-white dark:bg-slate-800">
-                    <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{m.group_name}</td>
-                    <td className="px-4 py-3 text-sm">{m.title}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{m.created_at ? new Date(m.created_at).toLocaleString() : '—'}</td>
-                    <td className="px-4 py-3">
-                      <Button size="sm" variant="danger" onClick={() => handleTerminateMeeting(m.id)}>Terminate</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : tab === 'bookings' ? (
-        <Card padding={false}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Student</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Tutor</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Time</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {bookings.map((b) => (
-                  <tr key={b.id} className="bg-white dark:bg-slate-800">
-                    <td className="px-4 py-3 text-sm">{b.student_email}</td>
-                    <td className="px-4 py-3 text-sm">{b.tutor_email}</td>
-                    <td className="px-4 py-3 text-sm">{new Date(b.start_time).toLocaleString()}</td>
-                    <td className="px-4 py-3"><Badge variant={b.status === 'confirmed' ? 'success' : b.status === 'cancelled' ? 'error' : 'default'}>{b.status}</Badge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : tab === 'reliability' ? (
-        <Card padding={false}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">#</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">User</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Score</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-slate-700 dark:text-slate-300">Sessions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {reliabilityRanking.length === 0 && !loading && (
-                  <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">No booking history yet</td></tr>
-                )}
-                {reliabilityRanking.map((r, i) => (
-                  <tr key={r.id} className="bg-white dark:bg-slate-800">
-                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{i + 1}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900 dark:text-slate-100">{r.display_name || r.email}</td>
-                    <td className="px-4 py-3 text-sm font-medium">{Number(r.score).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{r.total}</td>
                   </tr>
                 ))}
               </tbody>
@@ -260,7 +216,9 @@ export default function AdminDashboard() {
                 {auditLog.map((log) => (
                   <tr key={log.id} className="bg-white dark:bg-slate-800">
                     <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">{new Date(log.created_at).toLocaleString()}</td>
-                    <td className="px-4 py-3"><Badge>{log.action}</Badge></td>
+                    <td className="px-4 py-3">
+                      <Badge>{log.action}</Badge>
+                    </td>
                     <td className="px-4 py-3 text-sm">{log.details ? JSON.stringify(log.details) : '—'}</td>
                   </tr>
                 ))}
@@ -275,8 +233,12 @@ export default function AdminDashboard() {
           <>
             <p className="text-slate-600 dark:text-slate-400">{confirmModal.message}</p>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="secondary" onClick={() => setConfirmModal(null)}>Cancel</Button>
-              <Button variant="danger" onClick={onConfirmModal}>Confirm</Button>
+              <Button variant="secondary" onClick={() => setConfirmModal(null)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={onConfirmModal}>
+                Confirm
+              </Button>
             </div>
           </>
         )}

@@ -96,20 +96,31 @@ export const getMember = async (groupId, userId) => {
   return rows[0] || null;
 };
 
-export const searchUsersNotInGroup = async (groupId, queryText, { limit = 10, offset = 0 } = {}) => {
+export const searchUsersNotInGroup = async (
+  groupId,
+  queryText,
+  { limit = 10, offset = 0, searcherUserId, specialization } = {}
+) => {
   const q = (queryText || '').trim();
+  const spec = typeof specialization === 'string' ? specialization.trim() : '';
+  if (!spec) {
+    return [];
+  }
   const { rows } = await query(
     `SELECT u.id, u.email, u.display_name
      FROM users u
      WHERE (u.email ILIKE $2 OR COALESCE(u.display_name, '') ILIKE $2)
        AND u.is_active = true
        AND u.is_verified = true
+       AND u.specialization IS NOT NULL
+       AND u.specialization = $5
+       AND u.id <> $6
        AND NOT EXISTS (
          SELECT 1 FROM group_members gm WHERE gm.group_id = $1 AND gm.user_id = u.id
        )
      ORDER BY u.email
      LIMIT $3 OFFSET $4`,
-    [groupId, `%${q}%`, limit, offset]
+    [groupId, `%${q}%`, limit, offset, spec, searcherUserId]
   );
   return rows;
 };

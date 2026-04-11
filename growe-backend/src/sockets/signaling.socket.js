@@ -30,6 +30,7 @@ export const initSignaling = (httpServer) => {
     }
     socket.userId = user.id;
     socket.userEmail = user.email;
+    socket.userRole = user.role_name;
     next();
   });
 
@@ -38,6 +39,9 @@ export const initSignaling = (httpServer) => {
 
   io.on('connection', (socket) => {
     socket.join(`user-${socket.userId}`);
+    if (socket.userRole === 'admin') {
+      socket.join('admin-dashboard');
+    }
 
     socket.on('join-room', async (data, callback) => {
       try {

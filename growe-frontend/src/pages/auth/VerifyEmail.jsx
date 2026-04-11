@@ -5,6 +5,7 @@ import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import AuthOnboardingSteps from '../../components/auth/AuthOnboardingSteps';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -99,6 +100,9 @@ export default function VerifyEmail() {
       )}
       {status === 'success' && (
         <Card className="text-center py-8 border-growe/40 bg-growe/10 dark:bg-growe/15">
+          <div className="mb-5">
+            <AuthOnboardingSteps currentStep={2} />
+          </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Email verified</h2>
           <p className="text-slate-700 dark:text-slate-200">{message}</p>
           <Link to="/login">
@@ -108,6 +112,9 @@ export default function VerifyEmail() {
       )}
       {status === 'error' && (
         <Card className={`text-center py-8 ${isExpired ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20' : 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20'}`}>
+          <div className="mb-5 text-left">
+            <AuthOnboardingSteps currentStep={1} />
+          </div>
           <h2 className="text-xl font-bold mb-2 text-slate-900 dark:text-slate-100">Verification issue</h2>
           <p className="mb-4 text-slate-700 dark:text-slate-300">{message}</p>
           {isExpired && (

@@ -31,6 +31,10 @@ export default function Login() {
         navigate('/verify-email', { replace: true });
         return;
       }
+      if (data?.requiresProfileCompletion) {
+        navigate('/complete-profile', { replace: true });
+        return;
+      }
       navigate(from, { replace: true });
     } catch (err) {
       const res = err.response?.data;
@@ -111,6 +115,10 @@ export default function Login() {
                       localStorage.setItem('user', JSON.stringify(data.user));
                       invalidateCsrfToken();
                       window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
+                      if (data?.requiresProfileCompletion) {
+                        navigate('/complete-profile', { replace: true });
+                        return;
+                      }
                       navigate(from, { replace: true });
                     } catch (err) {
                       toast.error(err.response?.data?.error || 'Google login failed');

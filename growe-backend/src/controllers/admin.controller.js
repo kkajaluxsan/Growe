@@ -2,28 +2,24 @@ import { query } from '../config/db.js';
 import * as userModel from '../models/user.model.js';
 import * as roleModel from '../models/role.model.js';
 import * as tutorModel from '../models/tutor.model.js';
-import * as meetingModel from '../models/meeting.model.js';
-import * as bookingModel from '../models/booking.model.js';
 import * as auditLogModel from '../models/auditLog.model.js';
-import { emitMeetingTerminated } from '../sockets/signaling.socket.js';
 
 const getClientIp = (req) => req.ip || req.connection?.remoteAddress || null;
 
+/** All metrics read from the same PostgreSQL database as the rest of the app (single source of truth). */
 export const getDashboardMetrics = async (req, res, next) => {
   try {
     const { rows: totalUsers } = await query('SELECT COUNT(*)::int as count FROM users');
     const { rows: activeUsers } = await query("SELECT COUNT(*)::int as count FROM users WHERE is_active = true AND is_verified = true");
-    const { rows: bookingsToday } = await query(
-      "SELECT COUNT(*)::int as count FROM bookings WHERE DATE(start_time AT TIME ZONE 'UTC') = CURRENT_DATE AND status NOT IN ('cancelled')"
-    );
-    const { rows: activeMeetings } = await query(
-      "SELECT COUNT(*)::int as count FROM meetings WHERE ended_at IS NULL AND created_at > NOW() - INTERVAL '24 hours'"
+    const { rows: verifiedUsers } = await query('SELECT COUNT(*)::int as count FROM users WHERE is_verified = true');
+    const { rows: profileIncomplete } = await query(
+      'SELECT COUNT(*)::int as count FROM users WHERE is_verified = true AND profile_completed = false'
     );
     res.json({
       totalUsers: totalUsers[0].count,
       activeUsers: activeUsers[0].count,
-      bookingsToday: bookingsToday[0].count,
-      activeMeetings: activeMeetings[0].count,
+      verifiedUsers: verifiedUsers[0].count,
+      profileIncomplete: profileIncomplete[0].count,
     });
   } catch (err) {
     next(err);
@@ -45,6 +41,8 @@ export const listUsers = async (req, res, next) => {
   }
 };
 
+import * as notificationService from '../services/notification.service.js';
+
 export const updateUser = async (req, res, next) => {
   try {
     const { isActive, roleName } = req.body;
@@ -63,6 +61,7 @@ export const updateUser = async (req, res, next) => {
         details: { email: user.email },
         ipAddress: getClientIp(req),
       });
+      notificationService.emitToAdmins('user_update', { userId: req.params.id, action: isActive ? 'activate' : 'deactivate' });
     }
     if (roleName) {
       const role = await roleModel.findByName(roleName);
@@ -78,6 +77,7 @@ export const updateUser = async (req, res, next) => {
         details: { email: user.email, newRole: roleName },
         ipAddress: getClientIp(req),
       });
+      notificationService.emitToAdmins('user_update', { userId: req.params.id, action: 'role_change', role: roleName });
     }
 
     res.json(user);
@@ -101,6 +101,7 @@ export const suspendTutor = async (req, res, next) => {
       details: { userId: req.params.id },
       ipAddress: getClientIp(req),
     });
+    notificationService.emitToAdmins('user_update', { userId: req.params.id, action: 'suspend' });
     res.json(updated);
   } catch (err) {
     next(err);
@@ -122,44 +123,8 @@ export const unsuspendTutor = async (req, res, next) => {
       details: { userId: req.params.id },
       ipAddress: getClientIp(req),
     });
+    notificationService.emitToAdmins('user_update', { userId: req.params.id, action: 'unsuspend' });
     res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const terminateMeeting = async (req, res, next) => {
-  try {
-    const meeting = await meetingModel.findById(req.params.id);
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
-    }
-    const updated = await meetingModel.terminateMeeting(req.params.id);
-    const io = req.app.get('io');
-    if (io) {
-      emitMeetingTerminated(io, req.params.id);
-    }
-    await auditLogModel.create({
-      actorId: req.user.id,
-      action: 'meeting_terminate',
-      resourceType: 'meeting',
-      resourceId: req.params.id,
-      details: { groupId: meeting.group_id },
-      ipAddress: getClientIp(req),
-    });
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const getBookingLogs = async (req, res, next) => {
-  try {
-    const bookings = await bookingModel.listAllForAdmin({
-      limit: parseInt(req.query.limit, 10) || 100,
-      offset: parseInt(req.query.offset, 10) || 0,
-    });
-    res.json(bookings);
   } catch (err) {
     next(err);
   }
@@ -191,6 +156,9 @@ export const removeUser = async (req, res, next) => {
       ipAddress: getClientIp(req),
     });
 
+    notificationService.emitToAdmins('admin_metric', { action: 'removal' });
+    notificationService.emitToAdmins('user_update', { action: 'removed', userId });
+
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -210,22 +178,3 @@ export const getAuditLog = async (req, res, next) => {
   }
 };
 
-export const listActiveMeetings = async (req, res, next) => {
-  try {
-    const meetings = await meetingModel.listActiveForAdmin();
-    res.json(meetings);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const getReliabilityRanking = async (req, res, next) => {
-  try {
-    const ranking = await bookingModel.getReliabilityRanking({
-      limit: parseInt(req.query.limit, 10) || 50,
-    });
-    res.json(ranking);
-  } catch (err) {
-    next(err);
-  }
-};

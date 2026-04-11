@@ -44,6 +44,7 @@ const forgotPasswordLimiter = rateLimit({
 router.post('/register', authLimiter, validateRegister, authController.register);
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.post('/google', authLimiter, authController.googleLogin);
+router.post('/complete-profile', authLimiter, authenticate, requireVerified, authController.completeProfile);
 router.post('/logout', authController.logout);
 router.get('/verify-email', authController.verifyEmail);
 router.post(

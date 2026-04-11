@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { requireVerified } from '../middleware/verified.middleware.js';
 import { validateMessageSend, validateMessageEdit } from '../middleware/validation.middleware.js';
 import { uploadChatFile } from '../middleware/messagingUpload.middleware.js';
+import { requireProfileComplete } from '../middleware/profileComplete.middleware.js';
 
 const router = Router();
 
@@ -25,6 +26,7 @@ const messageLimiter = rateLimit({
 
 router.use(authenticate);
 router.use(requireVerified);
+router.use(requireProfileComplete);
 
 router.get('/conversations', messagingController.listConversations);
 router.get('/conversations/eligible-users', messagingController.getEligibleUsers);
