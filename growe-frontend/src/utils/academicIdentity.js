@@ -1,4 +1,5 @@
 export const INDEX_NUMBER_REGEX = /^IT[0-9]{4,10}$/;
+export const NIC_REGEX = /^([0-9]{9}V|[0-9]{12})$/;
 export const PHONE_INPUT_REGEX = /^(?:\+94|94|0)?7[0-9]{8}$/;
 
 export function normalizeIndexNumber(input) {
@@ -10,6 +11,17 @@ export function normalizeIndexNumber(input) {
 
 export function isValidIndexNumber(input) {
   return INDEX_NUMBER_REGEX.test(normalizeIndexNumber(input));
+}
+
+export function normalizeNIC(input) {
+  return String(input ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+export function isValidNIC(input) {
+  return NIC_REGEX.test(normalizeNIC(input));
 }
 
 export function normalizePhoneToE164(input) {

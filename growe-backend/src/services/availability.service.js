@@ -115,9 +115,7 @@ export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
     throw err;
   }
 
-  const viewer = await userModel.findById(userId);
-  const specialization = viewer?.specialization ? String(viewer.specialization).trim() : '';
-  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date, { specialization });
+  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date);
 
   const byTutor = new Map();
 
@@ -223,12 +221,7 @@ export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, 
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
-  let specialization = '';
-  if (forUserId) {
-    const u = await userModel.findById(forUserId);
-    specialization = u?.specialization ? String(u.specialization).trim() : '';
-  }
-  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(dateStr, { specialization });
+  const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(dateStr);
   const candidates = [];
 
   for (const av of availabilities) {
@@ -263,7 +256,7 @@ export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, 
       tutorProfileId: av.tutor_id,
       tutorUserId: av.tutor_user_id,
       email: av.tutor_email,
-      displayName: av.tutor_display_name || av.tutor_email,
+      displayName: av.tutor_display_name || 'Tutor',
       avatarUrl: av.tutor_avatar_url || null,
       bio: av.tutor_bio || null,
       subjects: subs,

@@ -309,7 +309,7 @@ export default function GroupDetail() {
           <p className="font-semibold">Pending tutor approval</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-200/95">
             We sent a request to{' '}
-            <span className="font-medium">{tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'the tutor'}</span>
+            <span className="font-medium">{tutorInvite.tutor_display_name || 'the tutor'}</span>
             {tutorInvite.slot_start
               ? ` for ${new Date(tutorInvite.slot_start).toLocaleString(undefined, {
                   dateStyle: 'medium',
@@ -324,7 +324,7 @@ export default function GroupDetail() {
         <div className="mb-4 rounded-xl border border-red-200/90 bg-red-50 dark:bg-red-950/35 dark:border-red-800 px-4 py-3 text-sm text-red-900 dark:text-red-100">
           <p className="font-semibold">Tutor declined your request</p>
           <p className="mt-1 text-red-800/95 dark:text-red-200/95">
-            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Selected tutor'} declined to tutor this group.
+            {tutorInvite.tutor_display_name || 'Selected tutor'} declined to tutor this group.
             Choose another tutor for the same date or pick a different slot.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -337,7 +337,7 @@ export default function GroupDetail() {
         <div className="mb-4 rounded-xl border border-emerald-200/90 bg-emerald-50 dark:bg-emerald-950/35 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
           <p className="font-semibold">Tutor session confirmed</p>
           <p className="mt-1 text-emerald-800/95 dark:text-emerald-200/95">
-            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Your tutor'} accepted this group session.
+            {tutorInvite.tutor_display_name || 'Your tutor'} accepted this group session.
             Open the tutor session chat when it is time to start or join.
           </p>
           <div className="mt-3">

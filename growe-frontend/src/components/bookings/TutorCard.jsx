@@ -27,7 +27,7 @@ export default function TutorCard({ tutor, onSelect, selecting }) {
   const ratingCount = tutor?.rating_count || tutor?.ratingCount || 0;
   const subjects = tutor?.subjects?.length ? tutor.subjects.join(', ') : '—';
 
-  const name = tutor?.display_name || tutor?.name || tutor?.email || 'Tutor';
+  const name = tutor?.display_name || tutor?.displayName || tutor?.name || 'Tutor';
   const initials = String(name)
     .split(' ')
     .filter(Boolean)

@@ -11,7 +11,9 @@ import { authLabel, authInput } from '../../components/auth/authFieldStyles';
 import { SPECIALIZATION_OPTIONS } from '../../constants/specializations';
 import {
   normalizeIndexNumber,
+  normalizeNIC,
   isValidIndexNumber,
+  isValidNIC,
   isValidPhone,
   normalizePhoneToE164,
 } from '../../utils/academicIdentity';
@@ -45,6 +47,7 @@ export default function Register() {
   const [semester, setSemester] = useState(1);
   const [specialization, setSpecialization] = useState(SPECIALIZATION_OPTIONS[0]?.value || 'IT');
   const [indexNumber, setIndexNumber] = useState('');
+  const [nicNumber, setNicNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [touched, setTouched] = useState({});
   const [error, setError] = useState('');
@@ -69,30 +72,57 @@ export default function Register() {
       if (!password) e.password = 'Password is required';
       else if (password.length < 8) e.password = 'At least 8 characters';
     }
-    if (touched.indexNumber) {
-      const idx = normalizeIndexNumber(indexNumber);
-      if (!idx) e.indexNumber = 'Index number is required';
-      else if (!isValidIndexNumber(idx)) {
-        e.indexNumber = 'Index number must start with IT and contain only numbers after';
+    
+    // Role-specific identity field validation
+    if (roleName === 'student') {
+      if (touched.indexNumber) {
+        const idx = normalizeIndexNumber(indexNumber);
+        if (!idx) e.indexNumber = 'Index number is required';
+        else if (!isValidIndexNumber(idx)) {
+          e.indexNumber = 'Index number must start with IT and contain only numbers after';
+        }
+      }
+    } else if (roleName === 'tutor') {
+      if (touched.nicNumber) {
+        const nic = normalizeNIC(nicNumber);
+        if (!nic) e.nicNumber = 'NIC is required';
+        else if (!isValidNIC(nic)) {
+          e.nicNumber = 'NIC must be 9 digits + V (old) or 12 digits (new)';
+        }
       }
     }
+    
     if (touched.phoneNumber) {
       if (!phoneNumber.trim()) e.phoneNumber = 'Mobile number is required';
       else if (!isValidPhone(phoneNumber)) e.phoneNumber = 'Enter a valid Sri Lankan mobile number';
     }
     return e;
-  }, [touched, name, email, password, indexNumber, phoneNumber]);
+  }, [touched, name, email, password, indexNumber, nicNumber, phoneNumber, roleName]);
 
   const formValid = useMemo(() => {
     if (!name.trim()) return false;
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return false;
     if (!password || password.length < 8) return false;
-    const idx = normalizeIndexNumber(indexNumber);
-    if (!isValidIndexNumber(idx)) return false;
     if (!isValidPhone(phoneNumber)) return false;
-    if (!specialization) return false;
+    
+    // Academic fields only required for students
+    if (roleName === 'student') {
+      if (!specialization) return false;
+    }
+    
+    // Role-specific validation
+    if (roleName === 'student') {
+      const idx = normalizeIndexNumber(indexNumber);
+      if (!isValidIndexNumber(idx)) return false;
+    } else if (roleName === 'tutor') {
+      const nic = normalizeNIC(nicNumber);
+      if (!isValidNIC(nic)) return false;
+    } else {
+      return false;
+    }
+    
     return true;
-  }, [name, email, password, indexNumber, phoneNumber, specialization]);
+  }, [name, email, password, indexNumber, nicNumber, phoneNumber, specialization, roleName]);
 
   const markTouched = useCallback((field) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -100,31 +130,48 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setTouched({
+    const touchedFields = {
       name: true,
       email: true,
       password: true,
-      indexNumber: true,
       phoneNumber: true,
-    });
+    };
+    if (roleName === 'student') {
+      touchedFields.indexNumber = true;
+    } else if (roleName === 'tutor') {
+      touchedFields.nicNumber = true;
+    }
+    setTouched(touchedFields);
     setError('');
     if (!formValid) {
       toast.error('Please fix the errors before continuing.');
       return;
     }
     setLoading(true);
-    const idx = normalizeIndexNumber(indexNumber);
     const payload = {
       email: email.trim().toLowerCase(),
       password,
       roleName,
       name: name.trim(),
-      academicYear,
-      semester,
-      specialization,
-      indexNumber: idx,
       phoneNumber: normalizePhoneToE164(phoneNumber.trim()),
     };
+    
+    // Academic information only for students
+    if (roleName === 'student') {
+      payload.academicYear = academicYear;
+      payload.semester = semester;
+      payload.specialization = specialization;
+    }
+    
+    // Add role-specific identity field
+    if (roleName === 'student') {
+      const idx = normalizeIndexNumber(indexNumber);
+      payload.indexNumber = idx;
+    } else if (roleName === 'tutor') {
+      const nic = normalizeNIC(nicNumber);
+      payload.nicNumber = nic;
+    }
+    
     try {
       const data = await register(payload);
       setSuccess(true);
@@ -368,87 +415,118 @@ export default function Register() {
             </div>
           </div>
 
-          <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
-            <SectionTitle>Academic information</SectionTitle>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="register-year" className={authLabel}>
-                  Academic year
-                </label>
-                <select
-                  id="register-year"
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(Number(e.target.value))}
-                  className={selectClass}
-                >
-                  {ACADEMIC_YEARS.map((y) => (
-                    <option key={y.value} value={y.value}>
-                      {y.label}
-                    </option>
-                  ))}
-                </select>
+          {roleName === 'student' && (
+            <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
+              <SectionTitle>Academic information</SectionTitle>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="register-year" className={authLabel}>
+                    Academic year
+                  </label>
+                  <select
+                    id="register-year"
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {ACADEMIC_YEARS.map((y) => (
+                      <option key={y.value} value={y.value}>
+                        {y.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="register-semester" className={authLabel}>
+                    Semester
+                  </label>
+                  <select
+                    id="register-semester"
+                    value={semester}
+                    onChange={(e) => setSemester(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {SEMESTERS.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
-                <label htmlFor="register-semester" className={authLabel}>
-                  Semester
+                <label htmlFor="register-spec" className={authLabel}>
+                  Specialization
                 </label>
                 <select
-                  id="register-semester"
-                  value={semester}
-                  onChange={(e) => setSemester(Number(e.target.value))}
+                  id="register-spec"
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
                   className={selectClass}
                 >
-                  {SEMESTERS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  {SPECIALIZATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
-            <div>
-              <label htmlFor="register-spec" className={authLabel}>
-                Specialization
-              </label>
-              <select
-                id="register-spec"
-                value={specialization}
-                onChange={(e) => setSpecialization(e.target.value)}
-                className={selectClass}
-              >
-                {SPECIALIZATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          )}
 
           <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
             <SectionTitle>Identity</SectionTitle>
-            <div>
-              <label htmlFor="register-index" className={authLabel}>
-                Index number
-              </label>
-              <input
-                id="register-index"
-                type="text"
-                value={indexNumber}
-                onChange={(e) => {
-                  const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                  setIndexNumber(v);
-                }}
-                onBlur={() => markTouched('indexNumber')}
-                className={authInput}
-                autoComplete="off"
-                placeholder="IT2023001"
-                maxLength={14}
-              />
-              {fieldErrors.indexNumber && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.indexNumber}</p>
-              )}
-            </div>
+            
+            {roleName === 'student' ? (
+              <div>
+                <label htmlFor="register-index" className={authLabel}>
+                  Index number
+                </label>
+                <input
+                  id="register-index"
+                  type="text"
+                  value={indexNumber}
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    setIndexNumber(v);
+                  }}
+                  onBlur={() => markTouched('indexNumber')}
+                  className={authInput}
+                  autoComplete="off"
+                  placeholder="IT2023001"
+                  maxLength={14}
+                />
+                {fieldErrors.indexNumber && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.indexNumber}</p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="register-nic" className={authLabel}>
+                  NIC number
+                </label>
+                <input
+                  id="register-nic"
+                  type="text"
+                  value={nicNumber}
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    setNicNumber(v);
+                  }}
+                  onBlur={() => markTouched('nicNumber')}
+                  className={authInput}
+                  autoComplete="off"
+                  placeholder="123456789V or 123456789012"
+                  maxLength={12}
+                />
+                {fieldErrors.nicNumber && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.nicNumber}</p>
+                )}
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Old: 9 digits + V (e.g., 123456789V) | New: 12 digits (e.g., 123456789012)
+                </p>
+              </div>
+            )}}
             <div>
               <label htmlFor="register-phone" className={authLabel}>
                 Mobile number (Sri Lanka)

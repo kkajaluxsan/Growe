@@ -335,7 +335,7 @@ export default function TutorList() {
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    Tutor: {b.tutor_email || '—'}
+                    Tutor: {b.tutor_display_name || '—'}
                   </div>
                   <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                     {new Date(b.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}

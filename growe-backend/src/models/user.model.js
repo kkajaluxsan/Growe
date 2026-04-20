@@ -2,7 +2,7 @@ import { query } from '../config/db.js';
 
 const USER_ROW_SELECT = `u.id, u.email, u.password_hash, u.role_id, u.is_verified, u.is_active,
             u.display_name, u.avatar_url, u.provider, u.provider_id,
-            u.academic_year, u.semester, u.specialization, u.index_number, u.phone_number,
+            u.academic_year, u.semester, u.specialization, u.index_number, u.nic_number, u.phone_number,
             u.profile_completed,
             u.created_at, u.updated_at, r.name as role_name`;
 
@@ -14,12 +14,13 @@ export const create = async ({
   semester,
   specialization,
   indexNumber,
+  nicNumber,
   phoneNumber,
   displayName,
 }) => {
   const { rows } = await query(
-    `INSERT INTO users (email, password_hash, role_id, provider, academic_year, semester, specialization, index_number, phone_number, display_name, profile_completed)
-     VALUES ($1, $2, $3, 'local', $4, $5, $6, $7, $8, $9, true)
+    `INSERT INTO users (email, password_hash, role_id, provider, academic_year, semester, specialization, index_number, nic_number, phone_number, display_name, profile_completed)
+     VALUES ($1, $2, $3, 'local', $4, $5, $6, $7, $8, $9, $10, true)
      RETURNING id`,
     [
       email,
@@ -28,7 +29,8 @@ export const create = async ({
       academicYear,
       semester,
       specialization,
-      indexNumber,
+      indexNumber || null,
+      nicNumber || null,
       phoneNumber,
       displayName || null,
     ]
@@ -105,6 +107,20 @@ export const findOtherUserIdByIndexNumber = async (indexNumber, excludeUserId) =
   return rows[0]?.id || null;
 };
 
+/** @returns {string|null} user id that owns this NIC, or null */
+export const findIdByNIC = async (nicNumber) => {
+  const { rows } = await query('SELECT id FROM users WHERE nic_number = $1 LIMIT 1', [nicNumber]);
+  return rows[0]?.id || null;
+};
+
+export const findOtherUserIdByNIC = async (nicNumber, excludeUserId) => {
+  const { rows } = await query(
+    'SELECT id FROM users WHERE nic_number = $1 AND id <> $2 LIMIT 1',
+    [nicNumber, excludeUserId]
+  );
+  return rows[0]?.id || null;
+};
+
 export const updatePasswordHash = async (userId, passwordHash) => {
   const { rows } = await query(
     `UPDATE users SET password_hash = $1, provider = 'local', provider_id = NULL, updated_at = NOW()
@@ -157,6 +173,7 @@ export const updateProfile = async (userId, {
   semester,
   specialization,
   indexNumber,
+  nicNumber,
   phoneNumber,
   profileCompleted,
 } = {}) => {
@@ -191,6 +208,11 @@ export const updateProfile = async (userId, {
   if (indexNumber !== undefined) {
     updates.push(`index_number = $${i}`);
     params.push(indexNumber || null);
+    i++;
+  }
+  if (nicNumber !== undefined) {
+    updates.push(`nic_number = $${i}`);
+    params.push(nicNumber || null);
     i++;
   }
   if (phoneNumber !== undefined) {

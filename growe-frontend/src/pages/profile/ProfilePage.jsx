@@ -11,6 +11,8 @@ import { SPECIALIZATION_OPTIONS } from '../../constants/specializations';
 import {
   normalizeIndexNumber,
   isValidIndexNumber,
+  normalizeNIC,
+  isValidNIC,
   isValidPhone,
   normalizePhoneToE164,
 } from '../../utils/academicIdentity';
@@ -39,6 +41,7 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
   const [indexNumber, setIndexNumber] = useState('');
+  const [nicNumber, setNicNumber] = useState('');
   const [academicYear, setAcademicYear] = useState('');
   const [semester, setSemester] = useState('');
   const [specialization, setSpecialization] = useState('');
@@ -58,6 +61,7 @@ export default function ProfilePage() {
       setPhone(user.phone || '');
       setBio(user.bio || '');
       setIndexNumber(user.indexNumber || '');
+      setNicNumber(user.nicNumber || '');
       setAcademicYear(user.academicYear != null ? String(user.academicYear) : '');
       setSemester(user.semester != null ? String(user.semester) : '');
       setSpecialization(user.specialization || '');
@@ -65,7 +69,8 @@ export default function ProfilePage() {
   }, [user]);
 
   const profilePatchValid = useMemo(() => {
-    if (indexNumber && !isValidIndexNumber(normalizeIndexNumber(indexNumber))) return false;
+    if (user?.roleName === 'student' && indexNumber && !isValidIndexNumber(normalizeIndexNumber(indexNumber))) return false;
+    if (user?.roleName !== 'student' && nicNumber && !isValidNIC(normalizeNIC(nicNumber))) return false;
     if (phone && String(phone).trim() && !isValidPhone(phone)) return false;
     if (academicYear !== '' && academicYear != null) {
       const ay = parseInt(academicYear, 10);
@@ -81,7 +86,7 @@ export default function ProfilePage() {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!profilePatchValid) {
-      toast.error('Fix index number or mobile format before saving.');
+      toast.error('Fix identity or mobile format before saving.');
       return;
     }
     setSaving(true);
@@ -90,7 +95,8 @@ export default function ProfilePage() {
       await api.patch('/auth/me', {
         displayName: displayName.trim() || null,
         bio: bio.trim() || null,
-        indexNumber: normalizeIndexNumber(indexNumber) || null,
+        indexNumber: user?.roleName === 'student' ? (normalizeIndexNumber(indexNumber) || null) : undefined,
+        nicNumber: user?.roleName !== 'student' ? (normalizeNIC(nicNumber) || null) : undefined,
         academicYear: academicYear === '' ? null : parseInt(academicYear, 10),
         semester: semester === '' ? null : parseInt(semester, 10),
         specialization: specialization || null,
@@ -156,7 +162,7 @@ export default function ProfilePage() {
         subtitle="Manage your academic identity and account details."
       />
 
-      {user?.indexNumber || user?.specialization || user?.academicYear != null ? (
+      {user?.indexNumber || user?.nicNumber || user?.specialization || user?.academicYear != null ? (
         <Card>
           <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Academic identity</h2>
           <dl className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
@@ -164,6 +170,12 @@ export default function ProfilePage() {
               <div>
                 <dt className="text-slate-500 dark:text-slate-400">Index</dt>
                 <dd className="font-medium">{user.indexNumber}</dd>
+              </div>
+            )}
+            {user?.nicNumber && (
+              <div>
+                <dt className="text-slate-500 dark:text-slate-400">NIC</dt>
+                <dd className="font-medium">{user.nicNumber}</dd>
               </div>
             )}
             {yearSemLabel() && (
@@ -257,17 +269,31 @@ export default function ProfilePage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Input
-                  type="text"
-                  label="Index number"
-                  value={indexNumber}
-                  onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                  placeholder="IT2023001"
-                  inputClassName="font-mono text-sm"
-                  maxLength={14}
-                />
-              </div>
+              {!isTutor ? (
+                <div>
+                  <Input
+                    type="text"
+                    label="Index number"
+                    value={indexNumber}
+                    onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                    placeholder="IT2023001"
+                    inputClassName="font-mono text-sm"
+                    maxLength={14}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Input
+                    type="text"
+                    label="NIC number"
+                    value={nicNumber}
+                    onChange={(e) => setNicNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                    placeholder="123456789V"
+                    inputClassName="font-mono text-sm"
+                    maxLength={12}
+                  />
+                </div>
+              )}
               <div>
                 <Input
                   type="tel"
@@ -279,55 +305,59 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
+            
+            {!isTutor && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Academic year</label>
+                    <select
+                      value={academicYear}
+                      onChange={(e) => setAcademicYear(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">—</option>
+                      {ACADEMIC_YEARS.map((y) => (
+                        <option key={y.value} value={y.value}>
+                          {y.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Semester</label>
+                    <select
+                      value={semester}
+                      onChange={(e) => setSemester(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">—</option>
+                      {SEMESTERS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Academic year</label>
-                <select
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-                >
-                  <option value="">—</option>
-                  {ACADEMIC_YEARS.map((y) => (
-                    <option key={y.value} value={y.value}>
-                      {y.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Semester</label>
-                <select
-                  value={semester}
-                  onChange={(e) => setSemester(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-                >
-                  <option value="">—</option>
-                  {SEMESTERS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specialization</label>
-              <select
-                value={specialization}
-                onChange={(e) => setSpecialization(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-              >
-                <option value="">—</option>
-                {SPECIALIZATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specialization</label>
+                  <select
+                    value={specialization}
+                    onChange={(e) => setSpecialization(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">—</option>
+                    {SPECIALIZATION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bio</label>

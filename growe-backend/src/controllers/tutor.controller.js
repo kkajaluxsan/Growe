@@ -180,12 +180,9 @@ export const getAvailableTutorsByDate = async (req, res, next) => {
 
 export const listTutors = async (req, res, next) => {
   try {
-    const viewer = await userModel.findById(req.user.id);
-    const specialization = viewer?.specialization ? String(viewer.specialization).trim() : '';
     const tutors = await tutorModel.listTutorProfiles({
       limit: parseInt(req.query.limit, 10) || 50,
       offset: parseInt(req.query.offset, 10) || 0,
-      specialization,
     });
 
     // Attach average rating to each tutor

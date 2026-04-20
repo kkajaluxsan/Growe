@@ -99,11 +99,7 @@ export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } =
   return rows;
 };
 
-export const listAvailabilityForTutorsOnDate = async (dateStr, { specialization } = {}) => {
-  const spec = typeof specialization === 'string' ? specialization.trim() : '';
-  if (!spec) {
-    return [];
-  }
+export const listAvailabilityForTutorsOnDate = async (dateStr) => {
   const { rows } = await query(
     `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
             tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects,
@@ -112,12 +108,10 @@ export const listAvailabilityForTutorsOnDate = async (dateStr, { specialization 
      JOIN tutor_profiles tp ON ta.tutor_id = tp.id
      JOIN users u ON tp.user_id = u.id
      WHERE tp.is_suspended = false
-       AND u.specialization IS NOT NULL
-       AND u.specialization = $2
        AND ta.available_date::date = $1::date
        AND ta.available_date::date >= CURRENT_DATE
      ORDER BY ta.start_time`,
-    [dateStr, spec]
+    [dateStr]
   );
   return rows;
 };
@@ -146,20 +140,14 @@ export const updateAvailability = async (
   return rows[0] || null;
 };
 
-export const listTutorProfiles = async ({ limit = 50, offset = 0, specialization } = {}) => {
-  const spec = typeof specialization === 'string' ? specialization.trim() : '';
-  if (!spec) {
-    return [];
-  }
+export const listTutorProfiles = async ({ limit = 50, offset = 0 } = {}) => {
   const { rows } = await query(
-    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.is_suspended, u.email
+    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.is_suspended, u.email, u.display_name, u.avatar_url
      FROM tutor_profiles tp
      JOIN users u ON tp.user_id = u.id
      WHERE tp.is_suspended = false
-       AND u.specialization IS NOT NULL
-       AND u.specialization = $3
      ORDER BY tp.created_at DESC LIMIT $1 OFFSET $2`,
-    [limit, offset, spec]
+    [limit, offset]
   );
   return rows;
 };

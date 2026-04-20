@@ -39,7 +39,7 @@ export default function TutorRequestPanel({ bookings, onAccept, onDecline, busyI
           >
             <div className="min-w-0">
               <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                {b.student_email || 'Student'}
+                {b.student_display_name || 'Student'}
               </div>
               <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                 Requested Time Slot: {formatRange(b.start_time, b.end_time)}

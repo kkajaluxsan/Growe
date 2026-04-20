@@ -11,7 +11,9 @@ import { authLabel, authInput } from '../../components/auth/authFieldStyles';
 import { SPECIALIZATION_OPTIONS } from '../../constants/specializations';
 import {
   normalizeIndexNumber,
+  normalizeNIC,
   isValidIndexNumber,
+  isValidNIC,
   isValidPhone,
   normalizePhoneToE164,
 } from '../../utils/academicIdentity';
@@ -44,6 +46,7 @@ export default function CompleteProfile() {
   const [semester, setSemester] = useState(1);
   const [specialization, setSpecialization] = useState('IT');
   const [indexNumber, setIndexNumber] = useState('');
+  const [nicNumber, setNicNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [touched, setTouched] = useState({});
   const [error, setError] = useState('');
@@ -62,27 +65,50 @@ export default function CompleteProfile() {
 
   const fieldErrors = useMemo(() => {
     const e = {};
-    if (touched.indexNumber) {
-      const idx = normalizeIndexNumber(indexNumber);
-      if (!idx) e.indexNumber = 'Index number is required';
-      else if (!isValidIndexNumber(idx)) {
-        e.indexNumber = 'Index number must start with IT and contain only numbers after';
+    
+    // Role-specific identity field validation
+    if (user?.roleName === 'student') {
+      if (touched.indexNumber) {
+        const idx = normalizeIndexNumber(indexNumber);
+        if (!idx) e.indexNumber = 'Index number is required';
+        else if (!isValidIndexNumber(idx)) {
+          e.indexNumber = 'Index number must start with IT and contain only numbers after';
+        }
+      }
+    } else if (user?.roleName === 'tutor' || user?.roleName === 'admin') {
+      if (touched.nicNumber) {
+        const nic = normalizeNIC(nicNumber);
+        if (!nic) e.nicNumber = 'NIC is required';
+        else if (!isValidNIC(nic)) {
+          e.nicNumber = 'NIC must be 9 digits + V (old) or 12 digits (new)';
+        }
       }
     }
+    
     if (touched.phoneNumber) {
       if (!phoneNumber.trim()) e.phoneNumber = 'Mobile number is required';
       else if (!isValidPhone(phoneNumber)) e.phoneNumber = 'Enter a valid Sri Lankan mobile number';
     }
     return e;
-  }, [touched, indexNumber, phoneNumber]);
+  }, [touched, indexNumber, nicNumber, phoneNumber, user?.roleName]);
 
   const formValid = useMemo(() => {
-    const idx = normalizeIndexNumber(indexNumber);
-    if (!isValidIndexNumber(idx)) return false;
     if (!isValidPhone(phoneNumber)) return false;
-    if (!specialization) return false;
+    
+    // Role-specific validation
+    if (user?.roleName === 'student') {
+      if (!specialization) return false;
+      const idx = normalizeIndexNumber(indexNumber);
+      if (!isValidIndexNumber(idx)) return false;
+    } else if (user?.roleName === 'tutor' || user?.roleName === 'admin') {
+      const nic = normalizeNIC(nicNumber);
+      if (!isValidNIC(nic)) return false;
+    } else {
+      return false;
+    }
+    
     return true;
-  }, [indexNumber, phoneNumber, specialization]);
+  }, [indexNumber, nicNumber, phoneNumber, specialization, user?.roleName]);
 
   const markTouched = useCallback((field) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -90,24 +116,39 @@ export default function CompleteProfile() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setTouched({ indexNumber: true, phoneNumber: true });
+    const touchedFields = { phoneNumber: true };
+    if (user?.roleName === 'student') {
+      touchedFields.indexNumber = true;
+    } else if (user?.roleName === 'tutor' || user?.roleName === 'admin') {
+      touchedFields.nicNumber = true;
+    }
+    setTouched(touchedFields);
     setError('');
     if (!formValid) {
       toast.error('Please fix the errors before continuing.');
       return;
     }
     setLoading(true);
-    const idx = normalizeIndexNumber(indexNumber);
     try {
+      const payload = {
+        phoneNumber: normalizePhoneToE164(phoneNumber.trim()),
+      };
+      
+      // Academic fields only for students
+      if (user?.roleName === 'student') {
+        payload.academicYear = academicYear;
+        payload.semester = semester;
+        payload.specialization = specialization;
+        const idx = normalizeIndexNumber(indexNumber);
+        payload.indexNumber = idx;
+      } else if (user?.roleName === 'tutor' || user?.roleName === 'admin') {
+        const nic = normalizeNIC(nicNumber);
+        payload.nicNumber = nic;
+      }
+      
       await api.post(
         '/auth/complete-profile',
-        {
-          academicYear,
-          semester,
-          specialization,
-          indexNumber: idx,
-          phoneNumber: normalizePhoneToE164(phoneNumber.trim()),
-        },
+        payload,
         { skipGlobalErrorToast: true }
       );
       const fresh = await refreshUser();
@@ -170,84 +211,117 @@ export default function CompleteProfile() {
             </div>
           </div>
 
-          <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
-            <SectionTitle>Academic information</SectionTitle>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="cp-year" className={authLabel}>
-                  Academic year
-                </label>
-                <select
-                  id="cp-year"
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(Number(e.target.value))}
-                  className={selectClass}
-                >
-                  {ACADEMIC_YEARS.map((y) => (
-                    <option key={y.value} value={y.value}>
-                      {y.label}
-                    </option>
-                  ))}
-                </select>
+          {user?.roleName === 'student' && (
+            <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
+              <SectionTitle>Academic information</SectionTitle>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="cp-year" className={authLabel}>
+                    Academic year
+                  </label>
+                  <select
+                    id="cp-year"
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {ACADEMIC_YEARS.map((y) => (
+                      <option key={y.value} value={y.value}>
+                        {y.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="cp-semester" className={authLabel}>
+                    Semester
+                  </label>
+                  <select
+                    id="cp-semester"
+                    value={semester}
+                    onChange={(e) => setSemester(Number(e.target.value))}
+                    className={selectClass}
+                  >
+                    {SEMESTERS.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
-                <label htmlFor="cp-semester" className={authLabel}>
-                  Semester
+                <label htmlFor="cp-spec" className={authLabel}>
+                  Specialization
                 </label>
                 <select
-                  id="cp-semester"
-                  value={semester}
-                  onChange={(e) => setSemester(Number(e.target.value))}
+                  id="cp-spec"
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
                   className={selectClass}
                 >
-                  {SEMESTERS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  {SPECIALIZATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
-            <div>
-              <label htmlFor="cp-spec" className={authLabel}>
-                Specialization
-              </label>
-              <select
-                id="cp-spec"
-                value={specialization}
-                onChange={(e) => setSpecialization(e.target.value)}
-                className={selectClass}
-              >
-                {SPECIALIZATION_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          )}
 
           <div className="space-y-5 rounded-2xl border border-slate-200/80 bg-white/50 p-5 dark:border-slate-600 dark:bg-slate-900/30">
             <SectionTitle>Identity</SectionTitle>
-            <div>
-              <label htmlFor="cp-index" className={authLabel}>
-                Index number
-              </label>
-              <input
-                id="cp-index"
-                type="text"
-                value={indexNumber}
-                onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                onBlur={() => markTouched('indexNumber')}
-                className={authInput}
-                autoComplete="off"
-                placeholder="IT2023001"
-                maxLength={14}
-              />
-              {fieldErrors.indexNumber && (
-                <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.indexNumber}</p>
-              )}
-            </div>
+            
+            {user?.roleName === 'student' ? (
+              <div>
+                <label htmlFor="cp-index" className={authLabel}>
+                  Index number
+                </label>
+                <input
+                  id="cp-index"
+                  type="text"
+                  value={indexNumber}
+                  onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  onBlur={() => markTouched('indexNumber')}
+                  className={authInput}
+                  autoComplete="off"
+                  placeholder="IT2023001"
+                  maxLength={14}
+                />
+                {fieldErrors.indexNumber && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.indexNumber}</p>
+                )}
+              </div>
+            ) : user?.roleName === 'tutor' || user?.roleName === 'admin' ? (
+              <div>
+                <label htmlFor="cp-nic" className={authLabel}>
+                  NIC number
+                </label>
+                <input
+                  id="cp-nic"
+                  type="text"
+                  value={nicNumber}
+                  onChange={(e) => setNicNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  onBlur={() => markTouched('nicNumber')}
+                  className={authInput}
+                  autoComplete="off"
+                  placeholder="123456789V or 123456789012"
+                  maxLength={12}
+                />
+                {fieldErrors.nicNumber && (
+                  <p className="mt-1 text-xs text-red-600 dark:text-red-400">{fieldErrors.nicNumber}</p>
+                )}
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Old: 9 digits + V (e.g., 123456789V) | New: 12 digits (e.g., 123456789012)
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-200">
+                Loading role information...
+              </div>
+            )}
+            
             <div>
               <label htmlFor="cp-phone" className={authLabel}>
                 Mobile number (Sri Lanka)
