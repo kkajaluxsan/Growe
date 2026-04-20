@@ -43,7 +43,7 @@ export default function Register() {
   const [roleName, setRoleName] = useState('student');
   const [academicYear, setAcademicYear] = useState(1);
   const [semester, setSemester] = useState(1);
-  const [specialization, setSpecialization] = useState('IT');
+  const [specialization, setSpecialization] = useState(SPECIALIZATION_OPTIONS[0]?.value || 'IT');
   const [indexNumber, setIndexNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [touched, setTouched] = useState({});
@@ -163,7 +163,11 @@ export default function Register() {
       toast.success('Welcome to GROWE!');
       navigate('/', { replace: true });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Google sign up failed');
+      if (!err?.response) {
+        toast.error('Cannot reach server. Start backend API and try again.');
+      } else {
+        toast.error(err.response?.data?.error || 'Google sign up failed');
+      }
     }
   };
 
@@ -290,7 +294,7 @@ export default function Register() {
                   size="large"
                   width="100%"
                   onSuccess={handleGoogleSignUp}
-                  onError={() => toast.error('Google sign up failed')}
+                  onError={() => toast.error('Google sign-up popup failed. Check browser popup/cookie settings and Google OAuth origin config.')}
                 />
               ) : (
                 <p className="text-center text-xs text-slate-500 dark:text-slate-400">
@@ -477,7 +481,7 @@ export default function Register() {
             Already have an account?{' '}
             <Link
               to="/login"
-              className="font-semibold text-growe-dark underline-offset-4 hover:underline dark:text-growe"
+              className="font-semibold text-growe-dark underline-offset-4 hover:underline dark:text-growe/90"
             >
               Sign in
             </Link>

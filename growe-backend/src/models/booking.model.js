@@ -172,6 +172,25 @@ export const countBookingsForSlot = async (availabilityId, startTime, endTime) =
   return rows[0].count;
 };
 
+/**
+ * Count overlapping bookings for a tutor across ALL availability rows, excluding one availability if needed.
+ * Used to avoid double-booking the same tutor through overlapping availability records.
+ */
+export const countTutorOverlapsForSlot = async ({ tutorId, startTime, endTime, excludeAvailabilityId = null }) => {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int as count
+     FROM bookings b
+     JOIN tutor_availability ta ON b.availability_id = ta.id
+     WHERE ta.tutor_id = $1
+       AND b.status NOT IN ('cancelled', 'rejected')
+       AND b.start_time < $3
+       AND b.end_time > $2
+       AND ($4::uuid IS NULL OR b.availability_id <> $4)`,
+    [tutorId, startTime, endTime, excludeAvailabilityId]
+  );
+  return rows[0].count;
+};
+
 /** Completed sessions per tutor profile (for tutor selection UX). */
 export const countCompletedSessionsByTutorIds = async (tutorProfileIds) => {
   if (!tutorProfileIds?.length) return new Map();

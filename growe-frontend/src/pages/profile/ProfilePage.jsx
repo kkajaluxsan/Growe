@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
+import PageHeader from '../../components/ui/PageHeader';
 import { SPECIALIZATION_OPTIONS } from '../../constants/specializations';
 import {
   normalizeIndexNumber,
@@ -149,7 +151,10 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Profile</h1>
+      <PageHeader
+        title="Profile"
+        subtitle="Manage your academic identity and account details."
+      />
 
       {user?.indexNumber || user?.specialization || user?.academicYear != null ? (
         <Card>
@@ -232,48 +237,45 @@ export default function ProfilePage() {
 
           <form onSubmit={handleSaveProfile} className="flex-1 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Display name</label>
-              <input
+              <Input
                 type="text"
+                label="Display name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your name"
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
                 maxLength={255}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
-              <input
+              <Input
                 type="email"
+                label="Email"
                 value={user?.email || ''}
                 disabled
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-slate-500 dark:text-slate-400 cursor-not-allowed"
               />
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Email cannot be changed.</p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Index number</label>
-                <input
+                <Input
                   type="text"
+                  label="Index number"
                   value={indexNumber}
                   onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                   placeholder="IT2023001"
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100 font-mono text-sm"
+                  inputClassName="font-mono text-sm"
                   maxLength={14}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mobile</label>
-                <input
+                <Input
                   type="tel"
+                  label="Mobile"
                   inputMode="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ''))}
                   placeholder="+94771234567"
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
                 />
               </div>
             </div>

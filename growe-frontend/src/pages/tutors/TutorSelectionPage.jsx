@@ -5,6 +5,7 @@ import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TutorCard from '../../components/bookings/TutorCard';
 import { useToast } from '../../context/ToastContext';
+import PageHeader from '../../components/ui/PageHeader';
 
 
 
@@ -125,17 +126,15 @@ export default function TutorSelectionPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Select a Tutor</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Time slot: <span className="font-medium text-slate-700 dark:text-slate-200">{displayWhen}</span>
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => navigate('/tutors')}>
-          Back to slots
-        </Button>
-      </div>
+      <PageHeader
+        title="Select a Tutor"
+        subtitle={`Time slot: ${displayWhen}`}
+        actions={(
+          <Button variant="secondary" onClick={() => navigate('/tutors')}>
+            Back to slots
+          </Button>
+        )}
+      />
 
       <Card className="p-6">
         <CardHeader title="Available tutors" subtitle="Sorted by highest rating first." />

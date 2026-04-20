@@ -127,6 +127,25 @@ export const deleteAvailability = async (id, tutorId) => {
   return rowCount > 0;
 };
 
+export const updateAvailability = async (
+  id,
+  tutorId,
+  { availableDate, startTime, endTime, sessionDuration, maxStudentsPerSlot }
+) => {
+  const { rows } = await query(
+    `UPDATE tutor_availability
+     SET available_date = $3::date,
+         start_time = $4,
+         end_time = $5,
+         session_duration = $6,
+         max_students_per_slot = $7
+     WHERE id = $1 AND tutor_id = $2
+     RETURNING id, tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at`,
+    [id, tutorId, availableDate, startTime, endTime, sessionDuration, maxStudentsPerSlot]
+  );
+  return rows[0] || null;
+};
+
 export const listTutorProfiles = async ({ limit = 50, offset = 0, specialization } = {}) => {
   const spec = typeof specialization === 'string' ? specialization.trim() : '';
   if (!spec) {

@@ -1,15 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Merriweather:wght@700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --growe-bg: #f4f7f6;
+  --growe-bg-alt: #ebf1ef;
+  --growe-surface: #ffffff;
+  --growe-surface-soft: #f6faf8;
+  --growe-surface-strong: #ffffff;
+  --growe-border: #dbe7e1;
+  --growe-border-strong: #bed0c8;
+  --growe-text: #0f172a;
+  --growe-muted: #475569;
+  --growe-brand: #4cf5b7;
+  --growe-brand-strong: #1f9f74;
+  --growe-shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.05);
+  --growe-shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
+  --growe-shadow-lg: 0 22px 48px rgba(15, 23, 42, 0.12);
+}
+
+.dark {
+  --growe-bg: #0b1220;
+  --growe-bg-alt: #0f172a;
+  --growe-surface: #0f172a;
+  --growe-surface-soft: #111827;
+  --growe-surface-strong: #121c2f;
+  --growe-border: #334155;
+  --growe-border-strong: #475569;
+  --growe-text: #e2e8f0;
+  --growe-muted: #94a3b8;
+  --growe-brand: #4cf5b7;
+  --growe-brand-strong: #6ff8c8;
+  --growe-shadow-sm: 0 2px 10px rgba(2, 6, 23, 0.4);
+  --growe-shadow-md: 0 12px 30px rgba(2, 6, 23, 0.45);
+  --growe-shadow-lg: 0 22px 44px rgba(2, 6, 23, 0.56);
+}
+
 @layer base {
+  * {
+    @apply border-slate-200 dark:border-slate-700;
+  }
+
   body {
-    @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 antialiased transition-colors duration-200;
+    @apply antialiased transition-colors duration-200;
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    color: var(--growe-text);
+    background-color: var(--growe-bg);
+    font-family: 'Plus Jakarta Sans', 'Segoe UI', 'Trebuchet MS', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    background-image:
+      linear-gradient(to bottom, rgba(46, 232, 160, 0.1), rgba(46, 232, 160, 0) 120px),
+      radial-gradient(circle at 12% 8%, rgba(76, 245, 183, 0.05), transparent 30%),
+      radial-gradient(circle at 90% 2%, rgba(148, 163, 184, 0.1), transparent 34%),
+      linear-gradient(180deg, var(--growe-bg), var(--growe-bg-alt));
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Source Serif 4', Georgia, serif;
+    letter-spacing: -0.015em;
+  }
+
+  ::selection {
+    background: rgba(76, 245, 183, 0.28);
+    color: rgb(15 23 42);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(76, 245, 183, 0.85);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.45);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
+    background-clip: content-box;
   }
 
   /* Login / register: keep autofill from painting fields gray */
@@ -22,15 +109,48 @@
   }
 }
 
-@layer components {
-  /* Plain CSS avoids Tailwind/postcss mangling of a[href].text-growe:hover in production CSS */
-  a.text-growe:hover,
-  a.text-growe-dark:hover {
-    opacity: 0.9;
-  }
-}
-
 @layer utilities {
+  .ui-surface {
+    background-color: var(--growe-surface);
+    border: 1px solid var(--growe-border);
+    box-shadow: var(--growe-shadow-sm);
+  }
+
+  .ui-surface-strong {
+    background-color: var(--growe-surface-strong);
+    border: 1px solid var(--growe-border-strong);
+    box-shadow: var(--growe-shadow-md);
+  }
+
+  .ui-page-title {
+    color: var(--growe-text);
+    font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+    font-family: 'Merriweather', 'Source Serif 4', Georgia, serif;
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .ui-page-subtitle {
+    color: var(--growe-muted);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  .ui-section-title {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 650;
+    color: var(--growe-text);
+    letter-spacing: -0.01em;
+  }
+
+  .ui-panel {
+    background: color-mix(in srgb, var(--growe-surface) 96%, transparent);
+    border: 1px solid var(--growe-border);
+    box-shadow: var(--growe-shadow-sm);
+    border-radius: 0.95rem;
+  }
+
   .animate-in {
     animation: slideIn 0.2s ease-out;
   }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
+import api from '../services/api';
 
 const DirectCallContext = createContext(null);
 
@@ -48,6 +49,55 @@ export function DirectCallProvider({ children }) {
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const [callUiType, setCallUiType] = useState('voice');
+
+  const resolveLocalBookingRole = useCallback((session) => {
+    const callerRole = session?.sessionBooking?.callerRole;
+    if (callerRole !== 'student' && callerRole !== 'tutor') return null;
+    if (session?.role === 'caller') return callerRole;
+    return callerRole === 'student' ? 'tutor' : 'student';
+  }, []);
+
+  const queueStudentRatingPrompt = useCallback(
+    (bookingId, attempt = 0) => {
+      if (!bookingId || attempt > 3) return;
+      api
+        .get(`/bookings/${bookingId}`, { skipGlobalErrorToast: true })
+        .then(({ data }) => {
+          if (data?.status === 'completed' && !data?.is_rated) {
+            navigate('/tutors', { state: { promptRatingBookingId: bookingId } });
+          } else if (attempt < 3) {
+            window.setTimeout(() => queueStudentRatingPrompt(bookingId, attempt + 1), 1000);
+          }
+        })
+        .catch(() => {
+          if (attempt < 3) {
+            window.setTimeout(() => queueStudentRatingPrompt(bookingId, attempt + 1), 1000);
+          }
+        });
+    },
+    [navigate]
+  );
+
+  const runPostCallBookingFlow = useCallback(
+    (session, reason) => {
+      if (reason !== 'ended') return;
+      const bookingId = Number(session?.sessionBooking?.bookingId) || null;
+      if (!bookingId) return;
+      const localRole = resolveLocalBookingRole(session);
+      if (localRole === 'tutor') {
+        api
+          .patch(`/bookings/${bookingId}/status`, { status: 'completed' }, { skipGlobalErrorToast: true })
+          .catch(() => {
+            // If this fails (already completed/not allowed), student-side polling still handles rating prompt.
+          });
+        return;
+      }
+      if (localRole === 'student') {
+        queueStudentRatingPrompt(bookingId);
+      }
+    },
+    [queueStudentRatingPrompt, resolveLocalBookingRole]
+  );
 
   const hangUpInternal = useCallback(
     (silent) => {
@@ -227,6 +277,7 @@ export function DirectCallProvider({ children }) {
         return;
       }
       if (sessionRef.current?.callId !== callId) return;
+      runPostCallBookingFlow(sessionRef.current, reason);
       if (reason === 'declined') toast.info('Call declined');
       else if (reason === 'cancelled') toast.info('Call cancelled');
       else if (reason === 'ended') toast.info('Call ended');
@@ -248,22 +299,22 @@ export function DirectCallProvider({ children }) {
       socket.off('dm-call-ice', onIce);
       socket.off('dm-call-ended', onEnded);
     };
-  }, [socket, user?.id, navigate, toast, hangUpInternal]);
+  }, [socket, user?.id, navigate, toast, hangUpInternal, runPostCallBookingFlow]);
 
   const startOutgoingCall = useCallback(
-    (conversationId, callType, peerName) => {
+    (conversationId, callType, peerName, sessionBooking = null) => {
       if (!socket) return;
       if (sessionRef.current || incoming) {
         toast.error('You are already in a call');
         return;
       }
       const callId = crypto.randomUUID();
-      sessionRef.current = { callId, conversationId, callType, role: 'caller' };
+      sessionRef.current = { callId, conversationId, callType, role: 'caller', sessionBooking };
       setCallUiType(callType);
       setActiveConversationId(conversationId);
       setPeerLabel(peerName || 'Contact');
       setStatus('outgoing');
-      socket.emit('dm-call-invite', { conversationId, callId, callType }, (res) => {
+      socket.emit('dm-call-invite', { conversationId, callId, callType, sessionBooking }, (res) => {
         if (res?.error) {
           toast.error(res.error);
           sessionRef.current = null;
@@ -294,6 +345,7 @@ export function DirectCallProvider({ children }) {
       conversationId: inc.conversationId,
       callType: inc.callType,
       role: 'callee',
+      sessionBooking: inc.sessionBooking || null,
     };
     setActiveConversationId(inc.conversationId);
     setStatus('connecting');
@@ -343,8 +395,11 @@ export function DirectCallProvider({ children }) {
   }, [incoming, socket]);
 
   const endCall = useCallback(() => {
+    if (sessionRef.current) {
+      runPostCallBookingFlow(sessionRef.current, 'ended');
+    }
     hangUpInternal();
-  }, [hangUpInternal]);
+  }, [hangUpInternal, runPostCallBookingFlow]);
 
   const toggleMute = useCallback(() => {
     setMuted((m) => {

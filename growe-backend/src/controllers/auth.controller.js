@@ -17,6 +17,7 @@ import { isSmtpConfigured } from '../services/emailDelivery.service.js';
 import * as notificationModel from '../models/notification.model.js';
 import * as notificationService from '../services/notification.service.js';
 import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
+import { logger } from '../utils/logger.js';
 import {
   normalizeIndexNumber,
   normalizePhoneToE164,
@@ -93,6 +94,11 @@ async function issueRegistrationVerification(userId, { resumed }) {
   const token = generateVerificationToken();
   const expiresAt = getVerificationExpiryDate();
   const expiryLabel = getVerificationExpiryLabel();
+  const createdToken = await emailVerificationModel.create({
+    userId: user.id,
+    token,
+    expiresAt,
+  });
 
   try {
     await sendVerificationEmail({
@@ -101,6 +107,7 @@ async function issueRegistrationVerification(userId, { resumed }) {
       expiresIn: expiryLabel,
     });
   } catch (emailErr) {
+    await emailVerificationModel.deleteById(createdToken.id).catch(() => {});
     console.error('Verification email failed:', emailErr);
     const isProduction = process.env.NODE_ENV === 'production';
     return {
@@ -111,12 +118,7 @@ async function issueRegistrationVerification(userId, { resumed }) {
     };
   }
 
-  await emailVerificationModel.deleteByUserId(userId);
-  await emailVerificationModel.create({
-    userId: user.id,
-    token,
-    expiresAt,
-  });
+  await emailVerificationModel.deleteByUserIdExcept(userId, createdToken.id);
 
   const payload = {
     message: resumed
@@ -190,6 +192,16 @@ export const register = async (req, res, next) => {
       }
       const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
       const previousPasswordHash = existing.password_hash;
+      const previousRoleId = existing.role_id;
+      const previousProfile = {
+        displayName: existing.display_name,
+        academicYear: existing.academic_year,
+        semester: existing.semester,
+        specialization: existing.specialization,
+        indexNumber: existing.index_number,
+        phoneNumber: existing.phone_number,
+        profileCompleted: !!existing.profile_completed,
+      };
       await userModel.updatePasswordHash(existing.id, passwordHash);
       if (existing.role_id !== role.id) {
         await userModel.updateRole(existing.id, role.id);
@@ -205,7 +217,13 @@ export const register = async (req, res, next) => {
       });
       const result = await issueRegistrationVerification(existing.id, { resumed: true });
       if (registrationEmailUndelivered(result)) {
-        await userModel.updatePasswordHash(existing.id, previousPasswordHash);
+        await userModel.updatePasswordHash(existing.id, previousPasswordHash).catch(() => {});
+        if (previousRoleId !== role.id) {
+          await userModel.updateRole(existing.id, previousRoleId).catch(() => {});
+        }
+        await userModel
+          .updateProfile(existing.id, previousProfile)
+          .catch(() => {});
         return res.status(503).json({
           success: false,
           error:
@@ -313,7 +331,7 @@ export const verifyEmail = async (req, res, next) => {
     }
 
     await userModel.updateVerification(record.user_id, true);
-    await emailVerificationModel.deleteByToken(token);
+    await emailVerificationModel.deleteByUserId(record.user_id);
 
     res.json({ success: true, message: 'Email verified successfully' });
   } catch (err) {
@@ -359,12 +377,12 @@ export const requestVerificationEmail = async (req, res, next) => {
     const token = generateVerificationToken();
     const expiresAt = getVerificationExpiryDate();
     const expiryLabel = getVerificationExpiryLabel();
-    await emailVerificationModel.deleteByUserId(user.id);
-    await emailVerificationModel.create({ userId: user.id, token, expiresAt });
+    const createdToken = await emailVerificationModel.create({ userId: user.id, token, expiresAt });
 
     try {
       await sendVerificationEmail({ email: user.email, token, expiresIn: expiryLabel });
     } catch (emailErr) {
+      await emailVerificationModel.deleteById(createdToken.id).catch(() => {});
       console.error('Request verification email failed:', emailErr);
       return res.status(503).json({
         success: false,
@@ -374,6 +392,8 @@ export const requestVerificationEmail = async (req, res, next) => {
           'Email delivery failed. Confirm FRONTEND_URL and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM. Check server logs for the underlying error.',
       });
     }
+
+    await emailVerificationModel.deleteByUserIdExcept(user.id, createdToken.id);
 
     return res.json(genericSuccess);
   } catch (err) {
@@ -400,12 +420,12 @@ export const resendVerification = async (req, res, next) => {
     const token = generateVerificationToken();
     const expiresAt = getVerificationExpiryDate();
     const expiryLabel = getVerificationExpiryLabel();
-    await emailVerificationModel.deleteByUserId(req.user.id);
-    await emailVerificationModel.create({ userId: req.user.id, token, expiresAt });
+    const createdToken = await emailVerificationModel.create({ userId: req.user.id, token, expiresAt });
 
     try {
       await sendVerificationEmail({ email: user.email, token, expiresIn: expiryLabel });
     } catch (emailErr) {
+      await emailVerificationModel.deleteById(createdToken.id).catch(() => {});
       console.error('Resend verification email failed:', emailErr);
       return res.status(503).json({
         success: false,
@@ -415,6 +435,8 @@ export const resendVerification = async (req, res, next) => {
           'Email delivery failed. Confirm FRONTEND_URL and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM. Check server logs for the underlying error.',
       });
     }
+
+    await emailVerificationModel.deleteByUserIdExcept(req.user.id, createdToken.id);
 
     res.json({ success: true, message: 'Verification email sent. Check your inbox.' });
   } catch (err) {
@@ -477,22 +499,29 @@ export const forgotPassword = async (req, res, next) => {
 
     const token = generateVerificationToken(32);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    await passwordResetModel.deleteByUserId(user.id);
-    await passwordResetModel.create({ userId: user.id, token, expiresAt });
+    const createdToken = await passwordResetModel.create({ userId: user.id, token, expiresAt });
 
     try {
       await sendPasswordResetEmail({ email: user.email, token, expiresIn: '1 hour' });
     } catch (e) {
+      await passwordResetModel.deleteById(createdToken.id).catch(() => {});
       console.error('Password reset email failed:', e?.cause || e);
-      const hint =
-        'Resend test senders (e.g. onboarding@resend.dev) only deliver to your own Resend account email until you verify a domain at https://resend.com/domains and set FROM to an address on that domain.';
       return res.status(503).json({
         success: false,
         error: 'Could not send email. Try again later.',
         code: 'EMAIL_SEND_FAILED',
-        details: [e?.message && String(e.message), hint].filter(Boolean).join(' '),
+        details:
+          [
+            e?.message && String(e.message),
+            'Email delivery failed. Confirm FRONTEND_URL and SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_SECURE/SMTP_FROM. Check server logs for the underlying error.',
+          ]
+            .filter(Boolean)
+            .join(' '),
       });
     }
+
+    await passwordResetModel.deleteByUserIdExcept(user.id, createdToken.id);
+
     try {
       await notificationModel.create({
         userId: user.id,
@@ -559,6 +588,12 @@ export const googleLogin = async (req, res, next) => {
       const existingByEmail = await userModel.findByEmail(email);
       if (existingByEmail) {
         user = await userModel.linkGoogleProvider(existingByEmail.id, sub);
+        if (!user) {
+          return res.status(409).json({
+            error: 'Could not link Google account. Try again or sign in with email/password first.',
+            code: 'GOOGLE_LINK_FAILED',
+          });
+        }
       } else {
         // Role for social signup:
         // - If provided, validate it (supports Register page role selection).
@@ -568,12 +603,27 @@ export const googleLogin = async (req, res, next) => {
         if (!role) {
           return res.status(400).json({ error: 'Invalid role', code: 'INVALID_ROLE' });
         }
-        user = await userModel.createGoogleUser({
-          email,
-          roleId: role.id,
-          providerId: sub,
-          displayName: name,
-        });
+        try {
+          user = await userModel.createGoogleUser({
+            email,
+            roleId: role.id,
+            providerId: sub,
+            displayName: name,
+          });
+        } catch (dbErr) {
+          // Concurrent social sign-ins can race on unique email/provider constraints.
+          if (dbErr?.code === '23505') {
+            const existingNow = await userModel.findByProviderId('google', sub) || await userModel.findByEmail(email);
+            if (existingNow) {
+              user =
+                existingNow.provider === 'google'
+                  ? existingNow
+                  : await userModel.linkGoogleProvider(existingNow.id, sub);
+            }
+          } else {
+            throw dbErr;
+          }
+        }
         
         // Notify admins of new registration in real-time
         notificationService.emitToAdmins('admin_metric', { action: 'registration', email: email });
@@ -591,7 +641,17 @@ export const googleLogin = async (req, res, next) => {
     const resp = await issueAuthResponse(res, user);
     res.json(attachProfileCompletionIfNeeded(resp, user));
   } catch (err) {
-    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    if (err?.code === '23505') {
+      return res.status(409).json({
+        error: 'Account already exists. Try signing in again.',
+        code: 'GOOGLE_ACCOUNT_EXISTS',
+      });
+    }
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    logger.error('google_login_failed_unexpected', {
+      code: err?.code,
+      message: err?.message,
+    });
     next(err);
   }
 };

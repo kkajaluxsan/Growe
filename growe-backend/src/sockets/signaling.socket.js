@@ -57,6 +57,13 @@ export const initSignaling = (httpServer) => {
           return;
         }
 
+        const anchor = new Date(meeting.scheduled_at || meeting.created_at).getTime();
+        const isExpired = !Number.isNaN(anchor) && Date.now() - anchor > 24 * 60 * 60 * 1000;
+        if (meeting.ended_at || isExpired) {
+          callback?.({ error: 'This meeting link has expired' });
+          return;
+        }
+
         const member = await groupModel.getMember(meeting.group_id, socket.userId);
         if (!member || member.status !== 'approved') {
           callback?.({ error: 'You must be a group member to join this meeting' });

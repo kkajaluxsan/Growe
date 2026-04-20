@@ -6,10 +6,11 @@ export const status = (req, res) => {
   const p = getConfiguredAiProviders();
   const order = getAiProviderOrder();
   res.json({
-    configured: p.gemini || p.groq || p.openai,
+    configured: p.gemini || p.groq || p.xai || p.openai,
     providers: [
       ...(p.gemini ? ['gemini'] : []),
       ...(p.groq ? ['groq'] : []),
+      ...(p.xai ? ['xai'] : []),
       ...(p.openai ? ['openai'] : []),
     ],
     order,
@@ -25,7 +26,7 @@ export const chat = async (req, res, next) => {
     const status = err.statusCode || (err.message?.includes('not configured') ? 503 : 500);
     if (status === 503 || err.code === 'AI_NOT_CONFIGURED') {
       return res.status(503).json({
-        error: 'AI assistant is not configured. Set GROQ_API_KEY (free tier), OPENAI_API_KEY, or GEMINI_API_KEY on the server.',
+        error: 'AI assistant is not configured. Set GROQ_API_KEY (free tier), XAI_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY on the server.',
         code: err.code || 'AI_NOT_CONFIGURED',
       });
     }

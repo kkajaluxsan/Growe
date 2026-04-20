@@ -1,5 +1,4 @@
 import { transaction } from '../config/db.js';
-import * as tutorModel from '../models/tutor.model.js';
 import * as bookingModel from '../models/booking.model.js';
 import * as notificationService from './notification.service.js';
 import { doTimesOverlap, isPast } from '../utils/timeUtils.js';
@@ -31,19 +30,6 @@ function toLocalDateString(val) {
 }
 
 export const createBooking = async ({ availabilityId, studentId, startTime, endTime }) => {
-  const availability = await tutorModel.findAvailabilityById(availabilityId);
-  if (!availability) {
-    const err = new Error('Availability not found');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  if (availability.is_suspended) {
-    const err = new Error('Tutor is suspended');
-    err.statusCode = 403;
-    throw err;
-  }
-
   const start = new Date(startTime);
   const end = new Date(endTime);
 
@@ -53,35 +39,54 @@ export const createBooking = async ({ availabilityId, studentId, startTime, endT
     throw err;
   }
 
-  const dateStr = availability.available_date;
-  const dateStrFixed = toLocalDateString(dateStr);
-  if (!dateStrFixed) {
-    const err = new Error('Invalid availability date');
-    err.statusCode = 500;
-    throw err;
-  }
-  const st = typeof availability.start_time === 'string' ? availability.start_time : availability.start_time?.slice(0, 8);
-  const et = typeof availability.end_time === 'string' ? availability.end_time : availability.end_time?.slice(0, 8);
-
-  const validSlots = generateSlots({
-    dateStr: dateStrFixed,
-    startTime: st,
-    endTime: et,
-    sessionDuration: availability.session_duration,
-  });
-
-  const slotValid = validSlots.some(
-    (s) => s.start === start.toISOString() && s.end === end.toISOString()
-  );
-  if (!slotValid) {
-    const err = new Error('Invalid or unavailable time slot');
-    err.statusCode = 400;
-    throw err;
-  }
-
   return transaction(async (client) => {
+    const availabilityResult = await client.query(
+      `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
+              tp.is_suspended
+       FROM tutor_availability ta
+       JOIN tutor_profiles tp ON ta.tutor_id = tp.id
+       WHERE ta.id = $1
+       FOR UPDATE`,
+      [availabilityId]
+    );
+    const availability = availabilityResult.rows[0];
+    if (!availability) {
+      const err = new Error('Availability not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (availability.is_suspended) {
+      const err = new Error('Tutor is suspended');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const dateStrFixed = toLocalDateString(availability.available_date);
+    if (!dateStrFixed) {
+      const err = new Error('Invalid availability date');
+      err.statusCode = 500;
+      throw err;
+    }
+    const st = typeof availability.start_time === 'string' ? availability.start_time : availability.start_time?.slice(0, 8);
+    const et = typeof availability.end_time === 'string' ? availability.end_time : availability.end_time?.slice(0, 8);
+    const validSlots = generateSlots({
+      dateStr: dateStrFixed,
+      startTime: st,
+      endTime: et,
+      sessionDuration: availability.session_duration,
+    });
+    const slotValid = validSlots.some(
+      (s) => s.start === start.toISOString() && s.end === end.toISOString()
+    );
+    if (!slotValid) {
+      const err = new Error('Invalid or unavailable time slot');
+      err.statusCode = 400;
+      throw err;
+    }
+
     // If max_students_per_slot > 1, multiple students can book the same slot up to capacity.
-    // We rely on the locked count check below to enforce capacity.
+    // The availability row lock above serializes concurrent bookings for the same slot.
 
     const overlapStudent = await client.query(
       `SELECT id FROM bookings
@@ -92,6 +97,23 @@ export const createBooking = async ({ availabilityId, studentId, startTime, endT
     );
     if (overlapStudent.rows.length > 0) {
       const err = new Error('You have an overlapping booking');
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const overlapTutor = await client.query(
+      `SELECT b.id
+       FROM bookings b
+       JOIN tutor_availability ta ON b.availability_id = ta.id
+       WHERE ta.tutor_id = $1
+         AND b.availability_id <> $2
+         AND b.status NOT IN ('cancelled', 'rejected')
+         AND b.start_time < $4 AND b.end_time > $3
+       FOR UPDATE`,
+      [availability.tutor_id, availabilityId, startTime, endTime]
+    );
+    if (overlapTutor.rows.length > 0) {
+      const err = new Error('Tutor is unavailable for the selected time');
       err.statusCode = 409;
       throw err;
     }
@@ -139,6 +161,16 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
     const err = new Error(`Cannot transition from ${booking.status} to ${newStatus}`);
     err.statusCode = 400;
     throw err;
+  }
+
+  if ((newStatus === 'completed' || newStatus === 'no_show') && (actorRole || 'student') === 'tutor') {
+    const start = new Date(booking.start_time);
+    if (start.getTime() > Date.now()) {
+      const err = new Error('This session has not started yet. You can mark Complete or No-Show only after start time.');
+      err.statusCode = 400;
+      err.code = 'SESSION_NOT_STARTED';
+      throw err;
+    }
   }
 
   if (newStatus === 'cancelled' && (actorRole || 'student') === 'student') {

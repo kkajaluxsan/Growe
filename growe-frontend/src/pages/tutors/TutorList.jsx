@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -30,6 +30,7 @@ function formatDateHeading(dateStr) {
 }
 
 export default function TutorList() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { socket } = useSocket();
@@ -45,7 +46,8 @@ export default function TutorList() {
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [rejectedModal, setRejectedModal] = useState({ open: false, booking: null });
   const [ratingModal, setRatingModal] = useState({ open: false, booking: null });
-  const lastNotifiedRef = useRef({ confirmed: new Set(), rejected: new Set() });
+  const bookingStatusRef = useRef(new Map());
+  const bookingsBootstrappedRef = useRef(false);
 
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
@@ -77,6 +79,22 @@ export default function TutorList() {
     fetchBookings();
   }, [fetchBookings]);
 
+  useEffect(() => {
+    const promptRatingBookingId = location.state?.promptRatingBookingId;
+    if (!promptRatingBookingId) return;
+
+    api.get(`/bookings/${promptRatingBookingId}`, { skipGlobalErrorToast: true })
+      .then(({ data }) => {
+        if (data?.status === 'completed' && !data?.is_rated) {
+          setRatingModal({ open: true, booking: data });
+          toast.success('Session completed. Please rate your tutor.');
+        }
+      })
+      .finally(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+  }, [location.pathname, location.state, navigate, toast]);
+
   // Real-time updates via Socket.io
   useEffect(() => {
     if (!socket) return;
@@ -101,22 +119,53 @@ export default function TutorList() {
   // Notify + guide the student when a booking gets confirmed/rejected.
   useEffect(() => {
     const list = Array.isArray(bookings) ? bookings : [];
+    const prevMap = bookingStatusRef.current;
 
-    const newlyConfirmed = list.filter(
-      (b) => b?.status === 'confirmed' && b?.id && !lastNotifiedRef.current.confirmed.has(b.id)
-    );
-    newlyConfirmed.forEach((b) => {
-      lastNotifiedRef.current.confirmed.add(b.id);
+    // First load seeds state only; no historical toasts/modals.
+    if (!bookingsBootstrappedRef.current) {
+      const seeded = new Map();
+      list.forEach((b) => {
+        if (b?.id) seeded.set(b.id, b.status || '');
+      });
+      bookingStatusRef.current = seeded;
+      bookingsBootstrappedRef.current = true;
+      return;
+    }
+
+    const nextMap = new Map();
+    const newlyConfirmed = [];
+    const newlyRejected = [];
+    const newlyCompletedUnrated = [];
+
+    list.forEach((b) => {
+      if (!b?.id) return;
+      const id = b.id;
+      const status = b.status || '';
+      const previous = prevMap.get(id);
+
+      // Trigger only on transitions to avoid stale/historical noise.
+      if (previous !== undefined && previous !== status) {
+        if (status === 'confirmed') newlyConfirmed.push(b);
+        if (status === 'rejected') newlyRejected.push(b);
+        if (status === 'completed' && !b.is_rated) newlyCompletedUnrated.push(b);
+      }
+
+      nextMap.set(id, status);
+    });
+
+    bookingStatusRef.current = nextMap;
+
+    newlyConfirmed.forEach(() => {
       toast.success('Your tutoring session has been confirmed.');
     });
 
-    const newlyRejected = list.filter(
-      (b) => b?.status === 'rejected' && b?.id && !lastNotifiedRef.current.rejected.has(b.id)
-    );
     if (newlyRejected.length > 0) {
-      const b = newlyRejected[0];
-      lastNotifiedRef.current.rejected.add(b.id);
-      setRejectedModal({ open: true, booking: b });
+      setRejectedModal({ open: true, booking: newlyRejected[0] });
+    }
+
+    if (newlyCompletedUnrated.length > 0) {
+      setRatingModal({ open: true, booking: newlyCompletedUnrated[0] });
+      toast.success('Session completed. Please rate your tutor.');
     }
   }, [bookings, toast]);
 
@@ -135,6 +184,14 @@ export default function TutorList() {
       ),
     [bookings]
   );
+
+  const isSessionLive = useCallback((b) => {
+    const now = Date.now();
+    const start = new Date(b.start_time).getTime();
+    const end = new Date(b.end_time).getTime();
+    if (Number.isNaN(start) || Number.isNaN(end)) return false;
+    return now >= start && now <= end;
+  }, []);
 
   const handleSlotClick = (key) => {
     setSelectedKey(key);
@@ -156,6 +213,30 @@ export default function TutorList() {
 
   const openRejected = (booking) => {
     setRejectedModal({ open: true, booking });
+  };
+
+  const openSessionChat = async (booking) => {
+    const otherUserId = booking?.tutor_user_id;
+    if (!otherUserId) {
+      toast.error('Tutor info missing for this booking.');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/conversations/direct/${otherUserId}`);
+      navigate('/messages', {
+        state: {
+          conversation: data,
+          callSession: {
+            conversationId: data.id,
+            bookingId: booking.id,
+            callerRole: 'student',
+          },
+        },
+      });
+      toast.success('Session chat opened. Use voice/video buttons to join the session.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not open session chat');
+    }
   };
 
   const handleRejectedSelectAnotherTutor = () => {
@@ -264,6 +345,11 @@ export default function TutorList() {
                   <span className="text-sm font-semibold capitalize text-slate-700 dark:text-slate-200">
                     {b.status === 'waiting_tutor_confirmation' ? 'waiting_tutor_confirmation' : b.status}
                   </span>
+                  {b.status === 'confirmed' && isSessionLive(b) && (
+                    <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>
+                      Join Session
+                    </Button>
+                  )}
                   {b.status === 'rejected' && (
                     <Button size="sm" onClick={() => openRejected(b)}>
                       Choose next step

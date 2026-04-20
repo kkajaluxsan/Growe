@@ -112,6 +112,37 @@ export const deleteAvailability = async (req, res, next) => {
   }
 };
 
+export const updateAvailability = async (req, res, next) => {
+  try {
+    const profile = await tutorModel.findProfileByUserId(req.user.id);
+    if (!profile) {
+      return res.status(404).json({ error: 'Tutor profile not found' });
+    }
+    const {
+      availableDate,
+      startTime,
+      endTime,
+      sessionDuration,
+      maxStudentsPerSlot = 1,
+    } = req.body;
+
+    const updated = await tutorModel.updateAvailability(req.params.id, profile.id, {
+      availableDate,
+      startTime,
+      endTime,
+      sessionDuration: parseInt(sessionDuration, 10),
+      maxStudentsPerSlot: parseInt(maxStudentsPerSlot, 10) || 1,
+    });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Availability not found' });
+    }
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getAvailableSlots = async (req, res, next) => {
   try {
     const { tutorId, fromDate, toDate } = req.query;
@@ -226,37 +257,6 @@ export const getMyRatings = async (req, res, next) => {
       offset: parseInt(req.query.offset, 10) || 0,
     });
     res.json({ average: parseFloat(avg.average), count: avg.count, reviews });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/** For group creation: tutors free at an exact slot (start/end ISO). */
-export const getAvailableForGroupSlot = async (req, res, next) => {
-  try {
-    const { start, end, subject, q } = req.query;
-    const tutors = await availabilityService.getAvailableTutorsForSlot({
-      startISO: typeof start === 'string' ? start : '',
-      endISO: typeof end === 'string' ? end : '',
-      subject: typeof subject === 'string' ? subject : '',
-      q: typeof q === 'string' ? q : '',
-    });
-    res.json(tutors);
-  } catch (err) {
-    if (err.statusCode) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    next(err);
-  }
-};
-
-/** Pending group tutor invites for the logged-in tutor. */
-export const listPendingGroupInvites = async (req, res, next) => {
-  try {
-    const rows = await groupTutorInviteModel.listPendingForTutor(req.user.id, {
-      limit: Math.min(parseInt(req.query.limit, 10) || 20, 50),
-    });
-    res.json(rows);
   } catch (err) {
     next(err);
   }

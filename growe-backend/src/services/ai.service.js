@@ -1,5 +1,5 @@
 /**
- * Server-side AI chat: configurable provider order (default Gemini → Groq → OpenAI).
+ * Server-side AI chat: configurable provider order (default Gemini → Groq → xAI → OpenAI).
  * Keys only in env — never exposed to clients.
  */
 
@@ -149,9 +149,61 @@ async function chatWithGroq(userMessage) {
   return text.trim() || null;
 }
 
+function extractXaiResponseText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+  if (!Array.isArray(data?.output)) return null;
+
+  const chunks = [];
+  for (const item of data.output) {
+    if (!Array.isArray(item?.content)) continue;
+    for (const part of item.content) {
+      const t = part?.type;
+      if ((t === 'output_text' || t === 'text') && typeof part?.text === 'string') {
+        chunks.push(part.text);
+      }
+    }
+  }
+  const joined = chunks.join('\n').trim();
+  return joined || null;
+}
+
+async function chatWithXai(userMessage) {
+  const key = envKey('XAI_API_KEY');
+  if (!key) return null;
+
+  const model = envKey('XAI_MODEL') || 'grok-4.20-reasoning';
+  const res = await fetch('https://api.x.ai/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage.trim() },
+      ],
+      max_output_tokens: 2048,
+      temperature: 0.7,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = data?.error?.message || data?.error || res.statusText;
+    throw new Error(err || 'xAI request failed');
+  }
+
+  return extractXaiResponseText(data);
+}
+
 const callers = {
   gemini: chatWithGemini,
   groq: chatWithGroq,
+  xai: chatWithXai,
   openai: chatWithOpenAI,
 };
 
@@ -190,8 +242,8 @@ export async function generateReply(message) {
 
   if (!reply) {
     if (lastErr?.code === 'AI_QUOTA_EXCEEDED') {
-      if (!configured.groq && !configured.openai) {
-        lastErr.message = `${lastErr.message} This server has no GROQ_API_KEY (free at console.groq.com) or OPENAI_API_KEY — add one to growe-backend/.env and restart when Gemini is unavailable.`;
+      if (!configured.groq && !configured.xai && !configured.openai) {
+        lastErr.message = `${lastErr.message} This server has no GROQ_API_KEY (free at console.groq.com), XAI_API_KEY (console.x.ai), or OPENAI_API_KEY — add one to growe-backend/.env and restart when Gemini is unavailable.`;
       }
       throw lastErr;
     }

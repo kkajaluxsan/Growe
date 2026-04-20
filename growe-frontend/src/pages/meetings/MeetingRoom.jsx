@@ -34,6 +34,8 @@ function videoGridClass(participantCount) {
   return 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-w-[1920px] mx-auto w-full';
 }
 
+const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export default function MeetingRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -99,16 +101,13 @@ export default function MeetingRoom() {
         setMeetingTitle(data?.title || 'Meeting');
         if (data?.ended_at) {
           setError('This meeting has already ended.');
-        } else if (data?.scheduled_at) {
-          const schedTime = new Date(data.scheduled_at).getTime();
-          // Expiry: 24 hours after the scheduled start time
-          if (Date.now() - schedTime > 24 * 60 * 60 * 1000) {
-            setError('This scheduled meeting point has expired.');
+        } else {
+          const anchor = new Date(data?.scheduled_at || data?.created_at).getTime();
+          if (!Number.isNaN(anchor) && Date.now() - anchor > MEETING_OPEN_WINDOW_MS) {
+            setError('This meeting link has expired.');
           } else {
             setMeetingValidated(true);
           }
-        } else {
-          setMeetingValidated(true);
         }
       })
       .catch((err) => {

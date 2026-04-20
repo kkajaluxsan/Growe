@@ -10,6 +10,16 @@ const nodeApi = axios.create({
 
 let csrfTokenPromise = null;
 
+function isBrowser() {
+  return typeof window !== 'undefined';
+}
+
+function redirectToLogin() {
+  if (!isBrowser()) return;
+  if (window.location.pathname === '/login') return;
+  window.location.assign('/login');
+}
+
 function extractCsrfFromResponse(res) {
   const d = res?.data;
   if (d && typeof d === 'object' && d.csrfToken) return d.csrfToken;
@@ -90,17 +100,67 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function normalizeDetails(details) {
+  if (Array.isArray(details)) {
+    return details
+      .map((item) => {
+        if (typeof item === 'string') return item.trim();
+        if (item && typeof item === 'object') {
+          const field = item.field || item.path || item.param;
+          const msg = item.message || item.msg || item.error;
+          if (field && msg) return `${field}: ${msg}`;
+          if (msg) return String(msg).trim();
+        }
+        return '';
+      })
+      .filter(Boolean);
+  }
+
+  if (details && typeof details === 'object') {
+    return Object.entries(details)
+      .flatMap(([field, value]) => {
+        if (Array.isArray(value)) return value.map((v) => `${field}: ${String(v).trim()}`);
+        if (value == null) return [];
+        return `${field}: ${String(value).trim()}`;
+      })
+      .filter(Boolean);
+  }
+
+  if (typeof details === 'string' && details.trim()) return [details.trim()];
+  return [];
+}
+
+export function extractApiErrorMessage(err, fallback = 'Request failed') {
+  const data = err?.response?.data;
+  const parts = [];
+
+  if (typeof data?.error === 'string' && data.error.trim()) parts.push(data.error.trim());
+  if (typeof data?.message === 'string' && data.message.trim()) {
+    const msg = data.message.trim();
+    if (!parts.includes(msg)) parts.push(msg);
+  }
+
+  for (const d of normalizeDetails(data?.details)) {
+    if (!parts.includes(d)) parts.push(d);
+  }
+
+  if (parts.length > 0) return parts.join(' | ');
+  return err?.message || fallback;
+}
+
+function normalizeApiErrorPayload(err) {
+  if (!err?.response?.data || typeof err.response.data !== 'object') return;
+  const fullMessage = extractApiErrorMessage(err, 'Request failed');
+  err.response.data.error = fullMessage;
+}
+
 function emitApiError(err) {
   try {
+    if (!isBrowser()) return;
     if (err?.config?.skipGlobalErrorToast) return;
     const status = err?.response?.status;
     const data = err?.response?.data;
-    const message =
-      data?.error ||
-      data?.message ||
-      (Array.isArray(data?.details) ? data.details.join(', ') : null) ||
-      err?.message ||
-      'Request failed';
+    const message = extractApiErrorMessage(err, 'Request failed');
     window.dispatchEvent(new CustomEvent('api-error', { detail: { status, message, data } }));
   } catch (_) {}
 }
@@ -116,6 +176,10 @@ nodeApi.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
+
+    // Normalize backend validation details into a single, consistent message.
+    normalizeApiErrorPayload(error);
+
     if (!originalRequest) {
       return Promise.reject(error);
     }
@@ -195,7 +259,7 @@ nodeApi.interceptors.response.use(
       if (error.response?.status === 401 && !isAuthEndpoint) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        window.location.href = '/login';
+        redirectToLogin();
       }
       emitApiError(error);
       return Promise.reject(error);
@@ -218,7 +282,7 @@ nodeApi.interceptors.response.use(
       refreshPromise = null;
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      redirectToLogin();
       emitApiError(refreshErr);
       return Promise.reject(refreshErr);
     }

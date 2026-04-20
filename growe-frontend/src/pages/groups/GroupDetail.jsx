@@ -28,6 +28,7 @@ export default function GroupDetail() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openingGroupChat, setOpeningGroupChat] = useState(false);
+  const [openingTutorChat, setOpeningTutorChat] = useState(false);
   const [inviteUrl, setInviteUrl] = useState('');
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
@@ -50,6 +51,7 @@ export default function GroupDetail() {
 
   useEffect(() => {
     if (!tutorInvite?.id) return undefined;
+    if (tutorInvite?.status !== 'pending') return undefined;
     const timer = setInterval(loadTutorInvite, 5000);
     return () => clearInterval(timer);
   }, [tutorInvite?.id, loadTutorInvite]);
@@ -76,11 +78,37 @@ export default function GroupDetail() {
   }, [id, toast]);
 
   useEffect(() => {
-    if (hadPendingTutorInvite.current && !tutorInvite) {
+    const hadPending = hadPendingTutorInvite.current;
+    const nowPending = tutorInvite?.status === 'pending';
+    if (hadPending && !nowPending) {
       refreshMembers();
+      if (tutorInvite?.status === 'rejected') {
+        toast.error('Tutor declined your request. Choose another tutor or another slot.');
+      }
     }
-    hadPendingTutorInvite.current = !!tutorInvite;
-  }, [tutorInvite, refreshMembers]);
+    hadPendingTutorInvite.current = nowPending;
+  }, [tutorInvite, refreshMembers, toast]);
+
+  const openScheduleForSameDate = () => {
+    const iso = tutorInvite?.slot_start;
+    if (iso) {
+      const d = new Date(iso);
+      if (!Number.isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        setScheduleDate(`${yyyy}-${mm}-${dd}`);
+      }
+    }
+    setScheduleModalOpen(true);
+    setAvailableTutors([]);
+    setTimeout(() => loadSlotsForDate(), 0);
+  };
+
+  const openScheduleFresh = () => {
+    setScheduleModalOpen(true);
+    setAvailableTutors([]);
+  };
 
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
@@ -193,6 +221,43 @@ export default function GroupDetail() {
       .finally(() => setOpeningGroupChat(false));
   };
 
+  const handleOpenTutorSessionChat = () => {
+    if (!tutorInvite?.booking_id || tutorInvite?.status !== 'accepted') {
+      toast.error('No accepted tutor session found for this group.');
+      return;
+    }
+
+    const isRequester = String(user?.id) === String(tutorInvite.requested_by);
+    const isTutor = String(user?.id) === String(tutorInvite.tutor_user_id);
+    const otherUserId = isRequester ? tutorInvite.tutor_user_id : tutorInvite.requested_by;
+    const callerRole = isRequester ? 'student' : isTutor ? 'tutor' : null;
+
+    if (!otherUserId || !callerRole) {
+      toast.error('Only the session requester or assigned tutor can open the tutor session call.');
+      return;
+    }
+
+    setOpeningTutorChat(true);
+    api.post(`/conversations/direct/${otherUserId}`)
+      .then(({ data }) => {
+        navigate('/messages', {
+          state: {
+            conversation: data,
+            callSession: {
+              conversationId: data.id,
+              bookingId: tutorInvite.booking_id,
+              callerRole,
+            },
+          },
+        });
+        toast.success('Tutor session chat opened. Use voice/video to start or join.');
+      })
+      .catch((err) => {
+        toast.error(err.response?.data?.error || 'Failed to open tutor session chat');
+      })
+      .finally(() => setOpeningTutorChat(false));
+  };
+
   const handleScheduleWithTutor = (tutor, slot) => {
     if (slot?.startTime && new Date(slot.startTime).getTime() <= Date.now()) {
       toast.error('This time slot is in the past. Pick another slot.');
@@ -239,7 +304,7 @@ export default function GroupDetail() {
         />
       </div>
       {error && <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</div>}
-      {tutorInvite && (
+      {tutorInvite?.status === 'pending' && (
         <div className="mb-4 rounded-xl border border-amber-200/90 bg-amber-50 dark:bg-amber-950/35 dark:border-amber-800 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
           <p className="font-semibold">Pending tutor approval</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-200/95">
@@ -253,6 +318,33 @@ export default function GroupDetail() {
               : ''}
             . The group remains student-only until they accept. You’ll get a notification when they respond.
           </p>
+        </div>
+      )}
+      {tutorInvite?.status === 'rejected' && (
+        <div className="mb-4 rounded-xl border border-red-200/90 bg-red-50 dark:bg-red-950/35 dark:border-red-800 px-4 py-3 text-sm text-red-900 dark:text-red-100">
+          <p className="font-semibold">Tutor declined your request</p>
+          <p className="mt-1 text-red-800/95 dark:text-red-200/95">
+            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Selected tutor'} declined to tutor this group.
+            Choose another tutor for the same date or pick a different slot.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" onClick={openScheduleForSameDate}>Find Another Tutor (Same Date)</Button>
+            <Button size="sm" variant="secondary" onClick={openScheduleFresh}>Choose Another Slot</Button>
+          </div>
+        </div>
+      )}
+      {tutorInvite?.status === 'accepted' && (
+        <div className="mb-4 rounded-xl border border-emerald-200/90 bg-emerald-50 dark:bg-emerald-950/35 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
+          <p className="font-semibold">Tutor session confirmed</p>
+          <p className="mt-1 text-emerald-800/95 dark:text-emerald-200/95">
+            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Your tutor'} accepted this group session.
+            Open the tutor session chat when it is time to start or join.
+          </p>
+          <div className="mt-3">
+            <Button size="sm" onClick={handleOpenTutorSessionChat} disabled={openingTutorChat}>
+              {openingTutorChat ? 'Opening…' : 'Open Tutor Session Chat'}
+            </Button>
+          </div>
         </div>
       )}
       <p className="text-slate-600 dark:text-slate-400 mb-6">{group.description || 'No description'}</p>
@@ -327,7 +419,7 @@ export default function GroupDetail() {
             </span>
             {isCreator && m.status === 'pending' ? (
               <span className="flex items-center gap-2">
-                <Button size="sm" variant="secondary" onClick={() => handleApprove(m.user_id)}>Approve</Button>
+                <Button size="sm" variant="success" onClick={() => handleApprove(m.user_id)}>Approve</Button>
                 <Button size="sm" variant="danger" onClick={() => handleReject(m.user_id)}>Reject</Button>
               </span>
             ) : (

@@ -28,6 +28,19 @@ export const deleteByUserId = async (userId) => {
   return rowCount > 0;
 };
 
+export const deleteByUserIdExcept = async (userId, keepId) => {
+  const { rowCount } = await query(
+    'DELETE FROM password_reset_tokens WHERE user_id = $1 AND id <> $2',
+    [userId, keepId]
+  );
+  return rowCount;
+};
+
+export const deleteById = async (id) => {
+  const { rowCount } = await query('DELETE FROM password_reset_tokens WHERE id = $1', [id]);
+  return rowCount > 0;
+};
+
 export const deleteByToken = async (token) => {
   const tokenHash = hashVerificationToken(token);
   const { rowCount } = await query('DELETE FROM password_reset_tokens WHERE token_hash = $1', [tokenHash]);

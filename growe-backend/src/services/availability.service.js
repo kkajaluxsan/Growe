@@ -57,6 +57,13 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate } = {}) => {
         slot.start,
         slot.end
       );
+      const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
+        tutorId: av.tutor_id,
+        startTime: slot.start,
+        endTime: slot.end,
+        excludeAvailabilityId: av.id,
+      });
+      if (tutorOverlapCount > 0) continue;
       if (count < av.max_students_per_slot) {
         result.push({
           availabilityId: av.id,
@@ -120,6 +127,13 @@ export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
       if (isPast(slot.start)) continue;
 
       const count = await bookingModel.countBookingsForSlot(av.id, slot.start, slot.end);
+      const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
+        tutorId: av.tutor_id,
+        startTime: slot.start,
+        endTime: slot.end,
+        excludeAvailabilityId: av.id,
+      });
+      if (tutorOverlapCount > 0) continue;
       if (count >= av.max_students_per_slot) continue;
 
       if (!byTutor.has(av.tutor_id)) {
@@ -225,6 +239,13 @@ export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, 
     if (!match) continue;
 
     const count = await bookingModel.countBookingsForSlot(av.id, match.start, match.end);
+    const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
+      tutorId: av.tutor_id,
+      startTime: match.start,
+      endTime: match.end,
+      excludeAvailabilityId: av.id,
+    });
+    if (tutorOverlapCount > 0) continue;
     if (count >= av.max_students_per_slot) continue;
 
     const subs = Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [];

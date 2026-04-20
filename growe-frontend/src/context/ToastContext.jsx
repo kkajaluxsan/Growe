@@ -36,6 +36,7 @@ export const ToastProvider = ({ children }) => {
   toast.success = (msg, opts) => add(msg, { ...opts, variant: 'success' });
   toast.error = (msg, opts) => add(msg, { ...opts, variant: 'error', duration: 6000 });
   toast.warning = (msg, opts) => add(msg, { ...opts, variant: 'warning' });
+  toast.info = (msg, opts) => add(msg, { ...opts, variant: 'info' });
 
   useEffect(() => {
     // Global API error toasts (emitted by axios client).
@@ -106,6 +107,7 @@ function ToastContainer() {
     success: 'bg-growe text-slate-900 shadow-md',
     error: 'bg-red-600 text-white',
     warning: 'bg-amber-600 text-white',
+    info: 'bg-blue-600 text-white',
   };
 
   return (

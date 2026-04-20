@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
-import Card from '../../components/ui/Card';
+import AuthLayout from '../../components/auth/AuthLayout';
+import AuthCard from '../../components/auth/AuthCard';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
 import { authLabel, authInput } from '../../components/auth/authFieldStyles';
@@ -46,9 +47,11 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-16 px-4">
-      <h1 className="text-2xl font-bold text-center text-slate-900 dark:text-slate-100 mb-6">Reset password</h1>
-      <Card>
+    <AuthLayout
+      headline="Set a new password"
+      subheadline="Use a strong password with at least 8 characters."
+    >
+      <AuthCard>
         {error && (
           <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm border border-red-200 dark:border-red-800 mb-4">
             {error}
@@ -96,8 +99,8 @@ export default function ResetPassword() {
             </Link>
           </p>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   );
 }
 

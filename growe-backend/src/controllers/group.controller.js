@@ -434,6 +434,11 @@ export const getMeetingById = async (req, res, next) => {
     if (!member || member.status !== 'approved') {
       return res.status(403).json({ error: 'You must be a group member to view this meeting' });
     }
+    const anchor = new Date(meeting.scheduled_at || meeting.created_at).getTime();
+    const isExpired = !Number.isNaN(anchor) && Date.now() - anchor > 24 * 60 * 60 * 1000;
+    if (meeting.ended_at || isExpired) {
+      return res.status(410).json({ error: 'This meeting link has expired' });
+    }
     res.json(meeting);
   } catch (err) {
     next(err);
@@ -443,7 +448,9 @@ export const getMeetingById = async (req, res, next) => {
 export const getTutorInviteForGroup = async (req, res, next) => {
   try {
     const pending = await groupTutorInviteModel.findPendingByGroupId(req.params.id);
-    res.json(pending);
+    if (pending) return res.json(pending);
+    const latest = await groupTutorInviteModel.findLatestByGroupId(req.params.id);
+    res.json(latest);
   } catch (err) {
     next(err);
   }
@@ -540,12 +547,23 @@ export const rejectGroupTutorInvite = async (req, res, next) => {
     }
     await groupTutorInviteModel.updateStatus(invite.id, 'rejected');
     const tutorUser = await userModel.findById(req.user.id);
+    const members = await groupModel.listMembers(groupId);
+    const recipientIds = [...new Set(
+      (Array.isArray(members) ? members : [])
+        .filter((m) => m.status === 'approved')
+        .map((m) => m.user_id)
+    )];
     try {
-      await notificationService.notifyGroupTutorInviteRejected({
-        studentUserId: invite.requested_by,
-        groupName: invite.group_name,
-        tutorDisplayName: tutorUser?.display_name || tutorUser?.email,
-      });
+      await Promise.allSettled(
+        recipientIds.map((uid) =>
+          notificationService.notifyGroupTutorInviteRejected({
+            recipientUserId: uid,
+            groupName: invite.group_name,
+            tutorDisplayName: tutorUser?.display_name || tutorUser?.email,
+            groupId,
+          })
+        )
+      );
     } catch (e) {
       logger.warn('notifyGroupTutorInviteRejected_failed', { err: e.message });
     }

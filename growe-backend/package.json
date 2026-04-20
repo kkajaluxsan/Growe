@@ -14,6 +14,7 @@
     "maildev": "maildev",
     "mailpit": "maildev",
     "test": "node --test src/utils/timeUtils.test.js src/utils/slotGenerator.test.js src/validation/assignment.schema.test.js",
+    "db:check": "node scripts/dbCheck.js",
     "migrate": "node src/config/runMigrations.js",
     "seed": "node src/config/runSeeds.js",
     "resend:test": "node scripts/resendTestEmail.js"

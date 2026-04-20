@@ -6,11 +6,28 @@ import ShareButton from '../../components/ui/ShareButton';
 import Skeleton from '../../components/ui/Skeleton';
 import { useSocket } from '../../context/SocketContext';
 import MeetingCalendar from './MeetingCalendar';
+import PageHeader from '../../components/ui/PageHeader';
 
 const viewTabs = [
   { id: 'list', label: 'List' },
   { id: 'calendar', label: 'Calendar' },
 ];
+
+const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function getMeetingAnchorTime(meeting) {
+  const raw = meeting?.scheduled_at || meeting?.created_at;
+  if (!raw) return null;
+  const ts = new Date(raw).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function isMeetingExpired(meeting) {
+  if (meeting?.ended_at) return true;
+  const anchor = getMeetingAnchorTime(meeting);
+  if (anchor == null) return false;
+  return Date.now() - anchor > MEETING_OPEN_WINDOW_MS;
+}
 
 export default function MeetingList() {
   const [meetings, setMeetings] = useState([]);
@@ -51,15 +68,18 @@ export default function MeetingList() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Meetings</h1>
-        <div className="flex rounded-lg border border-slate-200 dark:border-slate-600 p-0.5">
+      <PageHeader
+        title="Meetings"
+        subtitle="Schedule, track, and join your academic sessions."
+        className="mb-6"
+        actions={(
+          <div className="flex rounded-xl border border-slate-200 dark:border-slate-600 p-0.5">
           {viewTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setView(tab.id)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 view === tab.id
                   ? 'bg-growe text-slate-900'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -68,8 +88,9 @@ export default function MeetingList() {
               {tab.label}
             </button>
           ))}
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       {view === 'calendar' ? (
         <MeetingCalendar />
@@ -92,32 +113,51 @@ export default function MeetingList() {
           ) : (
             <div className="grid gap-4">
               {meetings.length === 0 ? (
-                <p className="text-slate-600 dark:text-slate-400">No meetings. Create one from a group or use the Calendar to schedule.</p>
+                <Card className="text-center py-10">
+                  <p className="text-slate-600 dark:text-slate-400">No meetings yet. Create one from a group or use Calendar view to schedule.</p>
+                </Card>
               ) : (
                 meetings.map((m) => (
                   <Card key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <Link to={`/meetings/${m.id}`} className="flex-1 min-w-0">
-                      <h2 className="font-semibold text-slate-900 dark:text-slate-100">{m.title}</h2>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">{m.group_name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-500">
-                        {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString() : new Date(m.created_at).toLocaleString()}
-                      </p>
-                    </Link>
-                    <a
-                      href={`${baseUrl}/meetings/${m.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-growe hover:underline shrink-0"
-                    >
-                      Open link
-                    </a>
-                    <ShareButton
-                      title={m.title}
-                      shareText={`Join this meeting: ${m.title} on GROWE`}
-                      url={`${baseUrl}/meetings/${m.id}`}
-                      variant="secondary"
-                      size="sm"
-                    />
+                    {isMeetingExpired(m) ? (
+                      <div className="flex-1 min-w-0 opacity-80">
+                        <h2 className="font-semibold text-slate-900 dark:text-slate-100">{m.title}</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">{m.group_name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500">
+                          {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString() : new Date(m.created_at).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">Link expired</p>
+                      </div>
+                    ) : (
+                      <Link to={`/meetings/${m.id}`} className="flex-1 min-w-0">
+                        <h2 className="font-semibold text-slate-900 dark:text-slate-100">{m.title}</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">{m.group_name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500">
+                          {m.scheduled_at ? new Date(m.scheduled_at).toLocaleString() : new Date(m.created_at).toLocaleString()}
+                        </p>
+                      </Link>
+                    )}
+                    {!isMeetingExpired(m) ? (
+                      <>
+                        <a
+                          href={`${baseUrl}/meetings/${m.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-growe hover:underline shrink-0"
+                        >
+                          Open link
+                        </a>
+                        <ShareButton
+                          title={m.title}
+                          shareText={`Join this meeting: ${m.title} on GROWE`}
+                          url={`${baseUrl}/meetings/${m.id}`}
+                          variant="secondary"
+                          size="sm"
+                        />
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-500 dark:text-slate-400 shrink-0">Expired</span>
+                    )}
                   </Card>
                 ))
               )}

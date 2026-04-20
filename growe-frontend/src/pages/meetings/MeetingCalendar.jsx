@@ -19,6 +19,22 @@ function getDayKey(date) {
   return typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10);
 }
 
+const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function getMeetingAnchorTime(meeting) {
+  const raw = meeting?.scheduled_at || meeting?.created_at;
+  if (!raw) return null;
+  const ts = new Date(raw).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function isMeetingExpired(meeting) {
+  if (meeting?.ended_at) return true;
+  const anchor = getMeetingAnchorTime(meeting);
+  if (anchor == null) return false;
+  return Date.now() - anchor > MEETING_OPEN_WINDOW_MS;
+}
+
 export default function MeetingCalendar() {
   const { toast } = useToast();
   const [cursor, setCursor] = useState(() => new Date());
@@ -135,14 +151,24 @@ export default function MeetingCalendar() {
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{d}</span>
                   <div className="mt-1 space-y-0.5">
                     {dayMeetings.slice(0, 2).map((m) => (
-                      <Link
-                        key={m.id}
-                        to={`/meetings/${m.id}`}
-                        className="block text-xs truncate rounded px-1 py-0.5 bg-growe/30 text-slate-800 dark:text-slate-200 hover:bg-growe/50"
-                        title={m.title}
-                      >
-                        {m.title}
-                      </Link>
+                      isMeetingExpired(m) ? (
+                        <span
+                          key={m.id}
+                          className="block text-xs truncate rounded px-1 py-0.5 bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400 cursor-not-allowed"
+                          title="Meeting link expired"
+                        >
+                          {m.title}
+                        </span>
+                      ) : (
+                        <Link
+                          key={m.id}
+                          to={`/meetings/${m.id}`}
+                          className="block text-xs truncate rounded px-1 py-0.5 bg-growe/30 text-slate-800 dark:text-slate-200 hover:bg-growe/50"
+                          title={m.title}
+                        >
+                          {m.title}
+                        </Link>
+                      )
                     ))}
                     {dayMeetings.length > 2 && <span className="text-xs text-slate-500">+{dayMeetings.length - 2}</span>}
                   </div>
@@ -157,7 +183,7 @@ export default function MeetingCalendar() {
         <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Upcoming meetings</h3>
         <ul className="space-y-2">
           {meetings
-            .filter((m) => !m.ended_at && (m.scheduled_at ? new Date(m.scheduled_at) >= new Date() : true))
+            .filter((m) => !isMeetingExpired(m) && (m.scheduled_at ? new Date(m.scheduled_at) >= new Date() : true))
             .slice(0, 10)
             .map((m) => (
               <li key={m.id}>
@@ -171,15 +197,21 @@ export default function MeetingCalendar() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <a
-                      href={`${baseUrl}/meetings/${m.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-growe hover:underline"
-                    >
-                      Open link
-                    </a>
-                    <ShareButton title={m.title} shareText={`Join: ${m.title}`} url={`${baseUrl}/meetings/${m.id}`} variant="secondary" size="sm" />
+                    {!isMeetingExpired(m) ? (
+                      <>
+                        <a
+                          href={`${baseUrl}/meetings/${m.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-growe hover:underline"
+                        >
+                          Open link
+                        </a>
+                        <ShareButton title={m.title} shareText={`Join: ${m.title}`} url={`${baseUrl}/meetings/${m.id}`} variant="secondary" size="sm" />
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Expired</span>
+                    )}
                   </div>
                 </Card>
               </li>

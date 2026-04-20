@@ -7,6 +7,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Plus Jakarta Sans', 'Segoe UI', 'Trebuchet MS', 'sans-serif'],
+        serif: ['Source Serif 4', 'Georgia', 'serif'],
+      },
       colors: {
         growe: {
           DEFAULT: '#4CF5B7',

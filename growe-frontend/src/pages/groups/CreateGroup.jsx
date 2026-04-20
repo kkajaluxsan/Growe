@@ -4,6 +4,8 @@ import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
+import PageHeader from '../../components/ui/PageHeader';
 import UserSearchDropdown from '../../components/common/UserSearchDropdown';
 import TutorSelectionSection from '../../components/groups/TutorSelectionSection';
 
@@ -149,12 +151,10 @@ export default function CreateGroup() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">Create study group</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Set a name and capacity, optionally schedule a session and invite a tutor (request-based), and add members.
-        </p>
-      </div>
+      <PageHeader
+        title="Create Study Group"
+        subtitle="Set capacity, invite members, and optionally request a tutor for a scheduled session."
+      />
       <form id="create-group-form" onSubmit={handleSubmit} className="space-y-6">
       <Card className="p-6">
         <div className="space-y-5">
@@ -164,15 +164,12 @@ export default function CreateGroup() {
             </div>
           )}
           <div>
-            <label htmlFor="group-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Name
-            </label>
-            <input
+            <Input
               id="group-name"
               type="text"
+              label="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
               required
             />
           </div>
@@ -184,7 +181,7 @@ export default function CreateGroup() {
               id="group-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2.5 px-3 text-slate-900 dark:text-slate-100"
               rows={3}
             />
           </div>
@@ -195,31 +192,28 @@ export default function CreateGroup() {
             >
               Subject / focus (optional)
             </label>
-            <input
+            <Input
               id="session-subject"
               type="text"
+              label="Subject / focus (optional)"
               value={sessionSubject}
               onChange={(e) => setSessionSubject(e.target.value)}
               placeholder="e.g. Calculus, essay writing…"
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
             />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Used to prioritize tutors who list this topic. Leave empty for any subject.
             </p>
           </div>
           <div>
-            <label htmlFor="max-m" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Max members (total)
-            </label>
-            <input
+            <Input
               id="max-m"
               type="number"
+              label="Max members (total)"
               min={2}
               max={100}
               value={maxMembers}
               onChange={handleMaxChange}
               onBlur={handleMaxBlur}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
             />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Includes you. After creation: {headcountAfterCreate} of {maxMembers} slots used

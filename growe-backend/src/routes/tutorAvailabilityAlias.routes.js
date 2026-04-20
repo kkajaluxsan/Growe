@@ -17,6 +17,7 @@ router.use(requireRole('tutor'));
 
 router.post('/availability', validateAvailabilityCreate, tutorController.addAvailability);
 router.get('/availability', tutorController.listAvailability);
+router.patch('/availability/:id', validateAvailabilityCreate, tutorController.updateAvailability);
 router.delete('/availability/:id', tutorController.deleteAvailability);
 
 export default router;

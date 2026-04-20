@@ -281,13 +281,15 @@ export async function notifyGroupTutorInviteRequested({
   });
 }
 
-export async function notifyGroupTutorInviteRejected({ studentUserId, groupName, tutorDisplayName }) {
+export async function notifyGroupTutorInviteRejected({ studentUserId, recipientUserId, groupName, tutorDisplayName, groupId }) {
+  const userId = recipientUserId || studentUserId;
+  if (!userId) return null;
   return createNotification({
-    userId: studentUserId,
+    userId,
     type: TYPES.GROUP,
     title: 'Tutor declined',
     message: `${tutorDisplayName || 'The tutor'} declined to join "${groupName || 'your group'}" as tutor. Your group continues without a tutor.`,
-    metadata: { event: 'group_tutor_invite_rejected' },
+    metadata: { event: 'group_tutor_invite_rejected', groupId },
   });
 }
 

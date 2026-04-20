@@ -33,7 +33,7 @@ server.listen(PORT, LISTEN_HOST, () => {
   logProductionEmailConfig();
   if (!hasAnyAiProvider()) {
     console.warn(
-      '[GROWE] AI assistant is disabled: set GEMINI_API_KEY, GROQ_API_KEY (free tier), and/or OPENAI_API_KEY in growe-backend/.env (see .env.example).'
+      '[GROWE] AI assistant is disabled: set GEMINI_API_KEY, GROQ_API_KEY (free tier), XAI_API_KEY, and/or OPENAI_API_KEY in growe-backend/.env (see .env.example).'
     );
   }
   if (!process.env.GOOGLE_CLIENT_ID?.trim()) {
@@ -41,6 +41,13 @@ server.listen(PORT, LISTEN_HOST, () => {
       '[GROWE] Google sign-in is disabled until GOOGLE_CLIENT_ID is set in growe-backend/.env (same Web client ID as VITE_GOOGLE_CLIENT_ID in growe-frontend/.env).'
     );
   }
+  // Run once at startup so reminders are not delayed until the first interval tick.
+  runBookingReminderJob().catch((err) =>
+    console.error('Booking reminder startup run error:', err.message)
+  );
+  runBookingImminentReminderJob().catch((err) =>
+    console.error('Booking imminent reminder startup run error:', err.message)
+  );
   const reminderIntervalMs = 15 * 60 * 1000;
   setInterval(() => {
     runBookingReminderJob().catch((err) => console.error('Booking reminder job error:', err.message));

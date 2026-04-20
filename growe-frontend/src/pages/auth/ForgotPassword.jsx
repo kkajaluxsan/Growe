@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
-import Card from '../../components/ui/Card';
+import AuthLayout from '../../components/auth/AuthLayout';
+import AuthCard from '../../components/auth/AuthCard';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../context/ToastContext';
 import { authLabel, authInput } from '../../components/auth/authFieldStyles';
@@ -33,9 +34,11 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-16 px-4">
-      <h1 className="text-2xl font-bold text-center text-slate-900 dark:text-slate-100 mb-6">Forgot password</h1>
-      <Card>
+    <AuthLayout
+      headline="Reset your password"
+      subheadline="Enter your university email and we will send a secure reset link."
+    >
+      <AuthCard>
         {sent ? (
           <div className="space-y-3 text-center">
             <p className="text-slate-700 dark:text-slate-300">
@@ -81,7 +84,7 @@ export default function ForgotPassword() {
             </p>
           </form>
         )}
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   );
 }
