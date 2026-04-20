@@ -170,6 +170,15 @@ export const countBookingsForSlot = async (availabilityId, startTime, endTime) =
   return rows[0].count;
 };
 
+export const hasStudentOverlapForSlot = async (studentId, startTime, endTime) => {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int as count FROM bookings
+     WHERE student_id = $1 AND status NOT IN ('cancelled') AND start_time < $3 AND end_time > $2`,
+    [studentId, startTime, endTime]
+  );
+  return rows[0].count > 0;
+};
+
 /** Completed sessions per tutor profile (for tutor selection UX). */
 export const countCompletedSessionsByTutorIds = async (tutorProfileIds) => {
   if (!tutorProfileIds?.length) return new Map();

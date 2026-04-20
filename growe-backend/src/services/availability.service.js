@@ -16,7 +16,7 @@ function toDateString(val) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export const getAvailableSlots = async ({ tutorId, fromDate, toDate } = {}) => {
+export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId } = {}) => {
   const today = toDateString(new Date()) || new Date().toISOString().slice(0, 10);
   const defaultTo = new Date();
   defaultTo.setDate(defaultTo.getDate() + 14);
@@ -50,6 +50,16 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate } = {}) => {
 
     for (const slot of slots) {
       if (isPast(slot.start)) continue;
+
+      // Skip slots where the student already has an overlapping booking
+      if (studentId) {
+        const hasOverlap = await bookingModel.hasStudentOverlapForSlot(
+          studentId,
+          slot.start,
+          slot.end
+        );
+        if (hasOverlap) continue;
+      }
 
       const count = await bookingModel.countBookingsForSlot(
         av.id,

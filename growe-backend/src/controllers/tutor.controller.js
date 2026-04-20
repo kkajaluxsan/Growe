@@ -117,6 +117,7 @@ export const getAvailableSlots = async (req, res, next) => {
       tutorId: tutorId || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
+      studentId: req.user?.id || undefined,
     });
     res.json(slots);
   } catch (err) {
