@@ -121,7 +121,7 @@ export default function TutorBookingCalendar({ bookings }) {
                         {b.st.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} –{' '}
                         {b.et.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                       </div>
-                      <div className="truncate text-slate-600 dark:text-slate-400">{b.student_email}</div>
+                      <div className="truncate text-slate-600 dark:text-slate-400">{b.student_display_name || 'Student'}</div>
                       <div className="capitalize text-slate-500 dark:text-slate-500">{b.status.replace(/_/g, ' ')}</div>
                     </li>
                   ))

@@ -20,8 +20,10 @@ import { verifyGoogleIdToken } from '../services/googleAuth.service.js';
 import { logger } from '../utils/logger.js';
 import {
   normalizeIndexNumber,
+  normalizeNIC,
   normalizePhoneToE164,
   isValidIndexNumber,
+  isValidNIC,
   isValidPhone,
 } from '../utils/academicIdentity.js';
 import { isAllowedSpecialization } from '../constants/specializations.js';
@@ -140,9 +142,13 @@ async function issueRegistrationVerification(userId, { resumed }) {
 function registrationEmailUndelivered(result) {
   const forceEmail =
     process.env.FORCE_EMAIL_VERIFICATION === '1' || process.env.FORCE_EMAIL_VERIFICATION === 'true';
-  const mustDeliverEmail = result.isProduction && (forceEmail || isSmtpConfigured());
+  const mustDeliverEmail = result.isProduction || forceEmail || isSmtpConfigured();
+
+  if (!mustDeliverEmail) return false;
+
   if (result.emailSendError) return true;
-  if (!result.emailSent && mustDeliverEmail) return true;
+  if (!result.emailSent) return true;
+
   return false;
 }
 
@@ -157,25 +163,50 @@ export const register = async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    const academicYear = parseInt(req.body.academicYear, 10);
-    const semester = parseInt(req.body.semester, 10);
+    const py = parseInt(req.body.academicYear, 10);
+    const academicYear = Number.isNaN(py) ? null : py;
+    const ps = parseInt(req.body.semester, 10);
+    const semester = Number.isNaN(ps) ? null : ps;
     const specialization = typeof req.body.specialization === 'string' ? req.body.specialization.trim() : '';
-    const indexNorm = normalizeIndexNumber(req.body.indexNumber);
     const phoneE164 = normalizePhoneToE164(req.body.phoneNumber);
-    if (!isAllowedSpecialization(specialization) || !indexNorm || !phoneE164) {
+    
+    if ((roleName === 'student' && !isAllowedSpecialization(specialization)) || !phoneE164) {
       return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid academic or contact data'] });
     }
 
-    const otherIdx = await userModel.findIdByIndexNumber(indexNorm);
-    if (otherIdx && (!existing || otherIdx !== existing.id)) {
-      return res.status(409).json({ error: 'Index number already exists' });
+    // Role-specific identity field handling
+    let identityFieldName, identityValue, duplicateCheckFn;
+    if (roleName === 'student') {
+      const indexNorm = normalizeIndexNumber(req.body.indexNumber);
+      if (!indexNorm || !isValidIndexNumber(indexNorm)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid index number'] });
+      }
+      identityFieldName = 'indexNumber';
+      identityValue = indexNorm;
+      duplicateCheckFn = () => userModel.findIdByIndexNumber(indexNorm);
+    } else if (roleName === 'tutor') {
+      const nicNorm = normalizeNIC(req.body.nicNumber);
+      if (!nicNorm || !isValidNIC(nicNorm)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid NIC number'] });
+      }
+      identityFieldName = 'nicNumber';
+      identityValue = nicNorm;
+      duplicateCheckFn = () => userModel.findIdByNIC(nicNorm);
+    } else {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    const otherIdentity = await duplicateCheckFn();
+    if (otherIdentity && (!existing || otherIdentity !== existing.id)) {
+      const fieldLabel = identityFieldName === 'indexNumber' ? 'Index number' : 'NIC';
+      return res.status(409).json({ error: `${fieldLabel} already exists` });
     }
 
     const academicPayload = {
       academicYear,
       semester,
       specialization,
-      indexNumber: indexNorm,
+      [identityFieldName]: identityValue,
       phoneNumber: phoneE164,
       displayName: typeof name === 'string' ? name.trim() : '',
     };
@@ -199,6 +230,7 @@ export const register = async (req, res, next) => {
         semester: existing.semester,
         specialization: existing.specialization,
         indexNumber: existing.index_number,
+        nicNumber: existing.nic_number,
         phoneNumber: existing.phone_number,
         profileCompleted: !!existing.profile_completed,
       };
@@ -206,15 +238,22 @@ export const register = async (req, res, next) => {
       if (existing.role_id !== role.id) {
         await userModel.updateRole(existing.id, role.id);
       }
-      await userModel.updateProfile(existing.id, {
+      const updateData = {
         displayName: academicPayload.displayName || null,
         academicYear: academicPayload.academicYear,
         semester: academicPayload.semester,
         specialization: academicPayload.specialization,
-        indexNumber: academicPayload.indexNumber,
         phoneNumber: academicPayload.phoneNumber,
         profileCompleted: true,
-      });
+      };
+      if (identityFieldName === 'indexNumber') {
+        updateData.indexNumber = identityValue;
+        updateData.nicNumber = null;
+      } else {
+        updateData.nicNumber = identityValue;
+        updateData.indexNumber = null;
+      }
+      await userModel.updateProfile(existing.id, updateData);
       const result = await issueRegistrationVerification(existing.id, { resumed: true });
       if (registrationEmailUndelivered(result)) {
         await userModel.updatePasswordHash(existing.id, previousPasswordHash).catch(() => {});
@@ -241,20 +280,28 @@ export const register = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     let created;
     try {
-      created = await userModel.create({
+      const createData = {
         email: emailNorm,
         passwordHash,
         roleId: role.id,
         academicYear,
         semester,
         specialization,
-        indexNumber: indexNorm,
         phoneNumber: phoneE164,
         displayName: academicPayload.displayName || null,
-      });
+      };
+      if (identityFieldName === 'indexNumber') {
+        createData.indexNumber = identityValue;
+        createData.nicNumber = null;
+      } else {
+        createData.nicNumber = identityValue;
+        createData.indexNumber = null;
+      }
+      created = await userModel.create(createData);
     } catch (dbErr) {
       if (dbErr && dbErr.code === '23505') {
-        return res.status(409).json({ error: 'Index number already exists' });
+        const fieldLabel = identityFieldName === 'indexNumber' ? 'Index number' : 'NIC';
+        return res.status(409).json({ error: `${fieldLabel} already exists` });
       }
       throw dbErr;
     }
@@ -280,7 +327,7 @@ export const register = async (req, res, next) => {
     return res.status(201).json(result.payload);
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'Index number already exists' });
+      return res.status(409).json({ error: 'Duplicate identity field' });
     }
     next(err);
   }
@@ -666,55 +713,108 @@ export const completeProfile = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Profile already completed', code: 'PROFILE_ALREADY_COMPLETE' });
     }
 
-    const academicYear = parseInt(req.body.academicYear, 10);
-    const semester = parseInt(req.body.semester, 10);
-    const specialization = typeof req.body.specialization === 'string' ? req.body.specialization.trim() : '';
-    const indexNorm = normalizeIndexNumber(req.body.indexNumber);
     const phoneE164 = normalizePhoneToE164(req.body.phoneNumber);
-
-    if (!isAllowedSpecialization(specialization) || !indexNorm || !phoneE164) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid academic or contact data'] });
-    }
-    if (Number.isNaN(academicYear) || academicYear < 1 || academicYear > 4) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Academic year must be between 1 and 4'] });
-    }
-    if (Number.isNaN(semester) || (semester !== 1 && semester !== 2)) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Semester must be 1 or 2'] });
-    }
-    if (!isValidIndexNumber(indexNorm)) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Index number must start with IT and contain only numbers after'] });
+    if (!phoneE164) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid phone number'] });
     }
     if (!isValidPhone(req.body.phoneNumber)) {
       return res.status(400).json({ success: false, error: 'Validation failed', details: ['Enter a valid Sri Lankan mobile number'] });
     }
 
-    const otherIdx = await userModel.findOtherUserIdByIndexNumber(indexNorm, req.user.id);
-    if (otherIdx) {
-      return res.status(409).json({ error: 'Index number already exists' });
+    // Academic fields only required for students
+    let academicYear, semester, specialization;
+    if (userRow.role_name === 'student') {
+      academicYear = parseInt(req.body.academicYear, 10);
+      semester = parseInt(req.body.semester, 10);
+      specialization = typeof req.body.specialization === 'string' ? req.body.specialization.trim() : '';
+
+      if (!isAllowedSpecialization(specialization)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid specialization'] });
+      }
+      if (Number.isNaN(academicYear) || academicYear < 1 || academicYear > 4) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Academic year must be between 1 and 4'] });
+      }
+      if (Number.isNaN(semester) || (semester !== 1 && semester !== 2)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Semester must be 1 or 2'] });
+      }
+    }
+
+    // Role-specific identity field handling
+    let identityFieldName, identityValue, duplicateCheckFn;
+    if (userRow.role_name === 'student') {
+      const indexNorm = normalizeIndexNumber(req.body.indexNumber);
+      if (!indexNorm || !isValidIndexNumber(indexNorm)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid index number'] });
+      }
+      identityFieldName = 'indexNumber';
+      identityValue = indexNorm;
+      duplicateCheckFn = () => userModel.findOtherUserIdByIndexNumber(indexNorm, req.user.id);
+    } else if (userRow.role_name === 'tutor' || userRow.role_name === 'admin') {
+      const nicNorm = normalizeNIC(req.body.nicNumber);
+      if (!nicNorm || !isValidNIC(nicNorm)) {
+        return res.status(400).json({ success: false, error: 'Validation failed', details: ['Invalid NIC number'] });
+      }
+      identityFieldName = 'nicNumber';
+      identityValue = nicNorm;
+      duplicateCheckFn = () => userModel.findOtherUserIdByNIC(nicNorm, req.user.id);
+    } else {
+      return res.status(400).json({ success: false, error: 'Invalid user role' });
+    }
+
+    const otherIdentity = await duplicateCheckFn();
+    if (otherIdentity) {
+      const fieldLabel = identityFieldName === 'indexNumber' ? 'Index number' : 'NIC';
+      return res.status(409).json({ error: `${fieldLabel} already exists` });
+    }
+
+    const updateData = {
+      phoneNumber: phoneE164,
+      profileCompleted: true,
+    };
+    
+    // Add academic fields for students, set to null for others
+    if (userRow.role_name === 'student') {
+      updateData.academicYear = academicYear;
+      updateData.semester = semester;
+      updateData.specialization = specialization;
+    } else {
+      // Explicitly null for tutors/admins
+      updateData.academicYear = null;
+      updateData.semester = null;
+      updateData.specialization = null;
+    }
+    
+    // Add role-specific identity
+    if (identityFieldName === 'indexNumber') {
+      updateData.indexNumber = identityValue;
+      updateData.nicNumber = null;
+    } else {
+      updateData.nicNumber = identityValue;
+      updateData.indexNumber = null;
     }
 
     try {
-      await userModel.updateProfile(req.user.id, {
-        academicYear,
-        semester,
-        specialization,
-        indexNumber: indexNorm,
-        phoneNumber: phoneE164,
-        profileCompleted: true,
-      });
+      await userModel.updateProfile(req.user.id, updateData);
     } catch (dbErr) {
       if (dbErr && dbErr.code === '23505') {
-        return res.status(409).json({ error: 'Index number already exists' });
+        const fieldLabel = identityFieldName === 'indexNumber' ? 'Index number' : 'NIC';
+        return res.status(409).json({ error: `${fieldLabel} already exists` });
       }
-      throw dbErr;
+      console.error('Profile update error:', dbErr);
+      return res.status(500).json({ success: false, error: 'Failed to save profile', details: [dbErr?.message || 'Database error'] });
     }
 
-    const prev = await userProfileModel.getByUserId(req.user.id);
-    await userProfileModel.upsert({
-      userId: req.user.id,
-      phone: phoneE164,
-      bio: prev?.bio ?? null,
-    });
+    try {
+      const prev = await userProfileModel.getByUserId(req.user.id);
+      await userProfileModel.upsert({
+        userId: req.user.id,
+        phone: phoneE164,
+        bio: prev?.bio ?? null,
+      });
+    } catch (profileErr) {
+      console.error('Profile metadata error:', profileErr);
+      return res.status(500).json({ success: false, error: 'Failed to save profile metadata', details: [profileErr?.message || 'Error'] });
+    }
 
     const user = await userModel.findById(req.user.id);
     res.json({
@@ -753,6 +853,7 @@ export const getProfile = async (req, res, next) => {
       phone,
       bio: profile?.bio,
       indexNumber: user.index_number || null,
+      nicNumber: user.nic_number || null,
       academicYear: user.academic_year ?? null,
       semester: user.semester ?? null,
       specialization: user.specialization || null,
@@ -772,6 +873,7 @@ export const updateProfile = async (req, res, next) => {
       phone,
       bio,
       indexNumber,
+      nicNumber,
       academicYear,
       semester,
       specialization,
@@ -786,6 +888,17 @@ export const updateProfile = async (req, res, next) => {
       } else {
         const clash = await userModel.findOtherUserIdByIndexNumber(idxNorm, req.user.id);
         if (clash) errors.push('Index number already exists');
+      }
+    }
+
+    let nicNorm;
+    if (nicNumber !== undefined) {
+      nicNorm = normalizeNIC(nicNumber);
+      if (!nicNorm || !isValidNIC(nicNorm)) {
+        errors.push('NIC must be 9 digits + V (old) or 12 digits (new)');
+      } else {
+        const clash = await userModel.findOtherUserIdByNIC(nicNorm, req.user.id);
+        if (clash) errors.push('NIC already exists');
       }
     }
 
@@ -823,6 +936,7 @@ export const updateProfile = async (req, res, next) => {
     const userPatch = {};
     if (displayName !== undefined) userPatch.displayName = displayName?.trim() || null;
     if (idxNorm !== undefined) userPatch.indexNumber = idxNorm;
+    if (nicNorm !== undefined) userPatch.nicNumber = nicNorm;
     if (academicYear !== undefined) {
       userPatch.academicYear =
         academicYear === '' || academicYear === null ? null : parseInt(academicYear, 10);
@@ -864,6 +978,7 @@ export const updateProfile = async (req, res, next) => {
       phone: mergedPhone,
       bio: profile?.bio,
       indexNumber: user.index_number || null,
+      nicNumber: user.nic_number || null,
       academicYear: user.academic_year ?? null,
       semester: user.semester ?? null,
       specialization: user.specialization || null,
@@ -876,11 +991,20 @@ export const updateProfile = async (req, res, next) => {
 
 export const uploadAvatar = async (req, res, next) => {
   try {
-    const { avatarUrl } = req.body;
+    let { avatarUrl } = req.body;
+    if (req.file) {
+      avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    }
+
+    if (!avatarUrl) {
+      return res.status(400).json({ error: 'No avatar provided' });
+    }
+
     const user = await userModel.updateProfile(req.user.id, { avatarUrl });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+    
     res.json({
       avatarUrl,
       user: {

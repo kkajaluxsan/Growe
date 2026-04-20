@@ -188,7 +188,7 @@ export default function Dashboard() {
             ts: new Date(b.start_time).getTime(),
             dayKey: toDayKey(b.start_time),
             title: b.subject || 'Tutoring session',
-            subtitle: b.tutor_display_name || b.tutor_email || 'Tutor session',
+            subtitle: b.tutor_display_name || 'Tutor session',
             when: b.start_time,
             to: '/tutors',
             type: 'Booking',

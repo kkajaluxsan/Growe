@@ -141,24 +141,34 @@ export default function TutorDashboard() {
         </button>
       </div>
 
-      {activeTab === 'profile' && (
-        <TutorProfileSection profile={profile} onSaved={loadProfile} />
-      )}
-      {activeTab === 'availability' && (
-        <TutorAvailabilitySection availability={availability} onUpdate={loadAvailability} />
-      )}
-      {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
-      {activeTab === 'bookings' && (
-        <TutorBookingsSection
-          bookings={bookings}
-          onUpdate={loadBookings}
-          onAfterGroupInviteAccept={() => {
-            loadBookings();
-            setActiveTab('schedule');
-          }}
-        />
-      )}
-      {activeTab === 'ratings' && <TutorRatingsSection />}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-2 space-y-6">
+          {activeTab === 'profile' && (
+            <TutorProfileSection profile={profile} onSaved={loadProfile} />
+          )}
+          {activeTab === 'availability' && (
+            <TutorAvailabilitySection availability={availability} onUpdate={loadAvailability} />
+          )}
+          {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
+          {activeTab === 'bookings' && (
+            <TutorBookingsSection
+              bookings={bookings}
+              onUpdate={loadBookings}
+              onAfterGroupInviteAccept={() => {
+                loadBookings();
+                setActiveTab('schedule');
+              }}
+            />
+          )}
+          {activeTab === 'ratings' && <TutorRatingsSection />}
+        </div>
+        
+        <div className="lg:col-span-1 relative">
+          <div className="sticky top-24">
+            <MiniCalendarWidget bookings={bookings} availability={availability} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -196,7 +206,7 @@ function TutorProfileSection({ profile, onSaved }) {
   };
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="w-full">
       <h2 className="text-lg font-semibold mb-4">Tutor Profile</h2>
       {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
       <form onSubmit={handleSubmit}>
@@ -229,6 +239,7 @@ function TutorProfileSection({ profile, onSaved }) {
 }
 
 function TutorAvailabilitySection({ availability, onUpdate }) {
+  const { toast } = useToast();
   const [adding, setAdding] = useState(false);
   const [availableDate, setAvailableDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
@@ -237,7 +248,6 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   const [durationMode, setDurationMode] = useState('preset');
   const [presetDuration, setPresetDuration] = useState(60);
   const [maxStudentsPerSlot, setMaxStudentsPerSlot] = useState(1);
-  const [error, setError] = useState('');
   const [editingId, setEditingId] = useState('');
   const [editForm, setEditForm] = useState({
     availableDate: '',
@@ -251,7 +261,14 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    setError('');
+    
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    if (endH < startH || (endH === startH && endM <= startM)) {
+      toast.warning('Change time and end time must be after start time');
+      return;
+    }
+
     setAdding(true);
     try {
       await api.post('/tutors/availability', {
@@ -264,7 +281,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
       setAvailableDate('');
       onUpdate();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.details?.join(', ') || 'Failed');
+      toast.error(err.response?.data?.error || err.response?.data?.details?.join(', ') || 'Failed');
     } finally {
       setAdding(false);
     }
@@ -287,6 +304,13 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   };
 
   const saveEdit = async (id) => {
+    const [startH, startM] = editForm.startTime.split(':').map(Number);
+    const [endH, endM] = editForm.endTime.split(':').map(Number);
+    if (endH < startH || (endH === startH && endM <= startM)) {
+      toast.warning('Change time and end time must be after start time');
+      return;
+    }
+
     try {
       await api.patch(`/tutors/availability/${id}`, {
         availableDate: editForm.availableDate,
@@ -301,7 +325,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
       setEditingId('');
       onUpdate();
     } catch (err) {
-      alert(err.response?.data?.error || err.response?.data?.details?.[0] || 'Failed to update availability');
+      toast.error(err.response?.data?.error || err.response?.data?.details?.[0] || 'Failed to update availability');
     }
   };
 
@@ -311,15 +335,20 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
       await api.delete(`/tutors/availability/${id}`);
       onUpdate();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || 'Failed');
     }
   };
 
+  const isTimeValid = (() => {
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    return eH > sH || (eH === sH && eM > sM);
+  })();
+
   return (
     <div className="space-y-6">
-      <Card className="max-w-xl">
+      <Card className="w-full">
         <h2 className="text-lg font-semibold mb-4">Add Availability</h2>
-        {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
         <form onSubmit={handleAdd} className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>
@@ -398,7 +427,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
               className="border rounded py-2 px-3 w-20"
             />
           </div>
-          <Button type="submit" disabled={adding} loading={adding}>
+          <Button type="submit" disabled={adding || !isTimeValid} loading={adding}>
             {adding ? 'Adding...' : 'Add'}
           </Button>
         </form>
@@ -573,7 +602,7 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
         <tbody>
           {bookings.map((b) => (
             <tr key={b.id} className="border-b">
-              <td className="px-4 py-2">{b.student_email}</td>
+              <td className="px-4 py-2">{b.student_display_name || 'Student'}</td>
               <td className="px-4 py-2">{new Date(b.start_time).toLocaleString()}</td>
               <td className="px-4 py-2 capitalize">{b.status}</td>
               <td className="px-4 py-2">
@@ -684,7 +713,7 @@ function TutorRatingsSection() {
                   <div className="flex items-center gap-2">
                     <span className="text-amber-500 text-sm">{'★'.repeat(r.rating)}<span className="text-slate-300 dark:text-slate-600">{'★'.repeat(5 - r.rating)}</span></span>
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {r.student_display_name || r.student_email || 'Student'}
+                      {r.student_display_name || 'Student'}
                     </span>
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -699,6 +728,93 @@ function TutorRatingsSection() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function MiniCalendarWidget({ bookings = [], availability = [] }) {
+  const [date, setDate] = useState(new Date());
+
+  useEffect(() => {
+    // Keep date updated passing midnight
+    const timer = setInterval(() => setDate(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const today = date.getDate();
+  const currentMonth = date.toLocaleString('default', { month: 'long' });
+  const currentYear = date.getFullYear();
+  const daysInMonth = new Date(currentYear, date.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, date.getMonth(), 1).getDay();
+
+  const daysLine = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-400 via-emerald-500 to-green-600 p-1 rounded-3xl shadow-2xl hover:shadow-[0_20px_50px_rgba(16,185,129,0.4)] transition-shadow duration-500">
+      <div className="bg-white/95 dark:bg-slate-900/95 rounded-[22px] p-6 h-full backdrop-blur-xl">
+        <div className="flex justify-between items-start mb-8 tracking-tight">
+          <div>
+            <h3 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-emerald-400">
+              {currentMonth}
+            </h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">{currentYear}</p>
+          </div>
+          <div className="w-14 h-14 flex flex-col items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-inner border border-emerald-100 dark:border-emerald-500/20 transform rotate-3">
+            <span className="text-xs font-bold uppercase tracking-widest opacity-80">{date.toLocaleString('default', { weekday: 'short' })}</span>
+            <span className="text-2xl font-black leading-none">{today}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center mb-3">
+          {daysLine.map(d => (
+            <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{d}</div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-y-2 gap-x-1">
+          {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+            <div key={`empty-${i}`} className="h-10"></div>
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const d = i + 1;
+            const isToday = d === today;
+            
+            // Check if there are bookings or availability on this specific day
+            const exactDateStr = `${currentYear}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const todaysBookings = bookings.filter(b => b.start_time?.startsWith(exactDateStr));
+            const hasActivity = todaysBookings.length > 0;
+            const todaysAvailability = availability.filter(a => a.available_date === exactDateStr);
+            const hasAvailability = todaysAvailability.length > 0;
+
+            return (
+              <div
+                key={d}
+                className={`relative h-10 flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-300 ${
+                  isToday 
+                  ? 'bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white font-bold shadow-lg transform scale-110 z-10' 
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-slate-800 font-medium cursor-default'
+                }`}
+              >
+                <span className={isToday ? "drop-shadow-md" : ""}>{d}</span>
+                <div className="absolute bottom-1 flex gap-[2px]">
+                  {hasAvailability && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>}
+                  {hasActivity && <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-emerald-500'}`}></div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <div className="mt-8 p-4 rounded-2xl bg-emerald-50/50 dark:bg-slate-800/50 border border-emerald-100/50 dark:border-slate-700">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <span>Dashboard is perfectly synced.</span>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

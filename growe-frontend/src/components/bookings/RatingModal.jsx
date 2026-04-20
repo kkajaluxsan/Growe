@@ -70,7 +70,7 @@ export default function RatingModal({ open, onClose, booking, onSubmitted }) {
     }
   };
 
-  const tutorLabel = booking?.tutor_email || booking?.tutorEmail || 'your tutor';
+  const tutorLabel = booking?.tutor_display_name || 'your tutor';
   const sessionDate = booking?.start_time
     ? new Date(booking.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : '';

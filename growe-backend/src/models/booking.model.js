@@ -23,7 +23,7 @@ export const findById = async (id) => {
 
 export const listByStudent = async (studentId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-                   ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email
+                   ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email, u.display_name as tutor_display_name
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
             WHERE b.student_id = $1`;
   const params = [studentId];
@@ -38,7 +38,7 @@ export const listByStudent = async (studentId, { status, limit = 50, offset = 0,
 
 export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-                   ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email
+                   ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email, u.display_name as student_display_name
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON b.student_id = u.id
             WHERE tp.user_id = $1`;
   const params = [tutorUserId];
@@ -54,7 +54,8 @@ export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0,
 export const listAllForAdmin = async ({ limit = 100, offset = 0 } = {}) => {
   const { rows } = await query(
     `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-            su.email as student_email, tu.email as tutor_email
+            su.email as student_email, tu.email as tutor_email,
+            su.display_name as student_display_name, tu.display_name as tutor_display_name
      FROM bookings b JOIN users su ON b.student_id = su.id
      JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users tu ON tp.user_id = tu.id
      ORDER BY b.created_at DESC LIMIT $1 OFFSET $2`,
@@ -198,7 +199,6 @@ export const countTutorOverlapsForSlot = async ({ tutorId, startTime, endTime, e
     [tutorId, startTime, endTime, excludeAvailabilityId]
   );
   return rows[0].count;
->>>>>>> a03196e0cfa4176d962c3660f8fbe56e87112d7b
 };
 
 /** Completed sessions per tutor profile (for tutor selection UX). */
