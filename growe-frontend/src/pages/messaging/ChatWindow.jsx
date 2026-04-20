@@ -8,7 +8,7 @@ import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import Button from '../../components/ui/Button';
 
-export default function ChatWindow({ conversationId, conversation, participants, onConversationLoad }) {
+export default function ChatWindow({ conversationId, conversation, participants, callSession, onConversationLoad }) {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { toast } = useToast();
@@ -251,6 +251,8 @@ export default function ChatWindow({ conversationId, conversation, participants,
   const isDirect = conversation?.type === 'DIRECT';
   const peerDisplayName =
     conversation?.direct_other_display_name || conversation?.direct_other_email || 'Contact';
+  const activeCallSession =
+    callSession && String(callSession.conversationId) === String(conversationId) ? callSession : null;
   const callButtonsEnabled = isDirect && canStartCall;
 
   if (!conversationId) {
@@ -274,7 +276,7 @@ export default function ChatWindow({ conversationId, conversation, participants,
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
-              onClick={() => startOutgoingCall(conversationId, 'voice', peerDisplayName)}
+              onClick={() => startOutgoingCall(conversationId, 'voice', peerDisplayName, activeCallSession)}
               disabled={!callButtonsEnabled}
               className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-40 disabled:pointer-events-none"
               title="Voice call"
@@ -286,7 +288,7 @@ export default function ChatWindow({ conversationId, conversation, participants,
             </button>
             <button
               type="button"
-              onClick={() => startOutgoingCall(conversationId, 'video', peerDisplayName)}
+              onClick={() => startOutgoingCall(conversationId, 'video', peerDisplayName, activeCallSession)}
               disabled={!callButtonsEnabled}
               className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/80 disabled:opacity-40 disabled:pointer-events-none"
               title="Video call"

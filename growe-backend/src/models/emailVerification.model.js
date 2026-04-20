@@ -31,6 +31,14 @@ export const deleteByUserId = async (userId) => {
   return rowCount > 0;
 };
 
+export const deleteByUserIdExcept = async (userId, keepId) => {
+  const { rowCount } = await query(
+    'DELETE FROM email_verification_tokens WHERE user_id = $1 AND id <> $2',
+    [userId, keepId]
+  );
+  return rowCount;
+};
+
 export const deleteById = async (id) => {
   const { rowCount } = await query(
     'DELETE FROM email_verification_tokens WHERE id = $1',

@@ -5,13 +5,9 @@ import Card, { CardHeader } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TutorCard from '../../components/bookings/TutorCard';
 import { useToast } from '../../context/ToastContext';
+import PageHeader from '../../components/ui/PageHeader';
 
-function hashToRating(input) {
-  let h = 0;
-  for (let i = 0; i < input.length; i += 1) h = (h * 31 + input.charCodeAt(i)) >>> 0;
-  const base = 3.8 + (h % 13) / 20; // 3.8 .. 4.45
-  return Math.min(5, Math.round(base * 10) / 10);
-}
+
 
 export default function TutorSelectionPage() {
   const location = useLocation();
@@ -72,9 +68,8 @@ export default function TutorSelectionPage() {
     const withMeta = filtered.map((t) => ({
       ...t,
       _availabilityId: availabilityByTutor.get(t.id),
-      _rating: hashToRating(String(t.id || t.email || 'tutor')),
     }));
-    withMeta.sort((a, b) => (b._rating || 0) - (a._rating || 0));
+    withMeta.sort((a, b) => (b.avg_rating || 0) - (a.avg_rating || 0));
     return withMeta;
   }, [matchingSlots, tutors]);
 
@@ -131,17 +126,15 @@ export default function TutorSelectionPage() {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Select a Tutor</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Time slot: <span className="font-medium text-slate-700 dark:text-slate-200">{displayWhen}</span>
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => navigate('/tutors')}>
-          Back to slots
-        </Button>
-      </div>
+      <PageHeader
+        title="Select a Tutor"
+        subtitle={`Time slot: ${displayWhen}`}
+        actions={(
+          <Button variant="secondary" onClick={() => navigate('/tutors')}>
+            Back to slots
+          </Button>
+        )}
+      />
 
       <Card className="p-6">
         <CardHeader title="Available tutors" subtitle="Sorted by highest rating first." />

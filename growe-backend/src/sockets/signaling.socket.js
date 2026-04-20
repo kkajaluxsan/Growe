@@ -30,6 +30,7 @@ export const initSignaling = (httpServer) => {
     }
     socket.userId = user.id;
     socket.userEmail = user.email;
+    socket.userRole = user.role_name;
     next();
   });
 
@@ -38,6 +39,9 @@ export const initSignaling = (httpServer) => {
 
   io.on('connection', (socket) => {
     socket.join(`user-${socket.userId}`);
+    if (socket.userRole === 'admin') {
+      socket.join('admin-dashboard');
+    }
 
     socket.on('join-room', async (data, callback) => {
       try {
@@ -50,6 +54,13 @@ export const initSignaling = (httpServer) => {
         const meeting = await meetingModel.findById(meetingId);
         if (!meeting) {
           callback?.({ error: 'Meeting not found' });
+          return;
+        }
+
+        const anchor = new Date(meeting.scheduled_at || meeting.created_at).getTime();
+        const isExpired = !Number.isNaN(anchor) && Date.now() - anchor > 24 * 60 * 60 * 1000;
+        if (meeting.ended_at || isExpired) {
+          callback?.({ error: 'This meeting link has expired' });
           return;
         }
 

@@ -28,7 +28,12 @@ export default function Login() {
       const data = await login(email, password);
       if (data?.user && data.user.isVerified === false) {
         toast.error(data?.message || 'Please verify your email to unlock all features');
-        navigate('/verify-email', { replace: true });
+        const encodedEmail = encodeURIComponent((data.user.email || email || '').trim());
+        navigate(encodedEmail ? `/verify-email?email=${encodedEmail}` : '/verify-email', { replace: true });
+        return;
+      }
+      if (data?.requiresProfileCompletion) {
+        navigate('/complete-profile', { replace: true });
         return;
       }
       navigate(from, { replace: true });
@@ -111,12 +116,20 @@ export default function Login() {
                       localStorage.setItem('user', JSON.stringify(data.user));
                       invalidateCsrfToken();
                       window.dispatchEvent(new CustomEvent('auth-refresh', { detail: data.user }));
+                      if (data?.requiresProfileCompletion) {
+                        navigate('/complete-profile', { replace: true });
+                        return;
+                      }
                       navigate(from, { replace: true });
                     } catch (err) {
-                      toast.error(err.response?.data?.error || 'Google login failed');
+                      if (!err?.response) {
+                        toast.error('Cannot reach server. Start backend API and try again.');
+                      } else {
+                        toast.error(err.response?.data?.error || 'Google login failed');
+                      }
                     }
                   }}
-                  onError={() => toast.error('Google login failed')}
+                  onError={() => toast.error('Google sign-in popup failed. Check browser popup/cookie settings and Google OAuth origin config.')}
                 />
               </div>
             ) : (
@@ -129,7 +142,7 @@ export default function Login() {
           <div className="text-center">
             <Link
               to="/forgot-password"
-              className="text-sm font-medium text-slate-600 underline-offset-4 hover:text-growe-dark hover:underline dark:text-slate-400 dark:hover:text-growe"
+              className="text-sm font-medium text-slate-600 underline-offset-4 hover:text-growe-dark hover:underline dark:text-slate-400"
             >
               Forgot password?
             </Link>
@@ -139,7 +152,7 @@ export default function Login() {
             Don&apos;t have an account?{' '}
             <Link
               to="/register"
-              className="font-semibold text-growe-dark underline-offset-4 hover:underline dark:text-growe"
+              className="font-semibold text-growe-dark underline-offset-4 hover:underline dark:text-growe/90"
             >
               Create one
             </Link>

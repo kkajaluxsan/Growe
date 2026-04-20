@@ -21,7 +21,7 @@ export const findById = async (id) => {
   return rows[0] || null;
 };
 
-export const listByStudent = async (studentId, { status, limit = 50, offset = 0 } = {}) => {
+export const listByStudent = async (studentId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
                    ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
@@ -29,13 +29,14 @@ export const listByStudent = async (studentId, { status, limit = 50, offset = 0 
   const params = [studentId];
   let i = 2;
   if (status) { sql += ` AND b.status = $${i}`; params.push(status); i++; }
+  if (filterPast) { sql += ' AND b.start_time >= CURRENT_TIMESTAMP'; }
   sql += ` ORDER BY b.start_time DESC LIMIT $${i} OFFSET $${i + 1}`;
   params.push(limit, offset);
   const { rows } = await query(sql, params);
   return rows;
 };
 
-export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0 } = {}) => {
+export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
   let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
                    ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON b.student_id = u.id
@@ -43,6 +44,7 @@ export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0 
   const params = [tutorUserId];
   let i = 2;
   if (status) { sql += ` AND b.status = $${i}`; params.push(status); i++; }
+  if (filterPast) { sql += ' AND b.start_time >= CURRENT_TIMESTAMP'; }
   sql += ` ORDER BY b.start_time DESC LIMIT $${i} OFFSET $${i + 1}`;
   params.push(limit, offset);
   const { rows } = await query(sql, params);
@@ -177,6 +179,26 @@ export const hasStudentOverlapForSlot = async (studentId, startTime, endTime) =>
     [studentId, startTime, endTime]
   );
   return rows[0].count > 0;
+};
+
+/**
+ * Count overlapping bookings for a tutor across ALL availability rows, excluding one availability if needed.
+ * Used to avoid double-booking the same tutor through overlapping availability records.
+ */
+export const countTutorOverlapsForSlot = async ({ tutorId, startTime, endTime, excludeAvailabilityId = null }) => {
+  const { rows } = await query(
+    `SELECT COUNT(*)::int as count
+     FROM bookings b
+     JOIN tutor_availability ta ON b.availability_id = ta.id
+     WHERE ta.tutor_id = $1
+       AND b.status NOT IN ('cancelled', 'rejected')
+       AND b.start_time < $3
+       AND b.end_time > $2
+       AND ($4::uuid IS NULL OR b.availability_id <> $4)`,
+    [tutorId, startTime, endTime, excludeAvailabilityId]
+  );
+  return rows[0].count;
+>>>>>>> a03196e0cfa4176d962c3660f8fbe56e87112d7b
 };
 
 /** Completed sessions per tutor profile (for tutor selection UX). */

@@ -38,6 +38,7 @@ export const validateCsrf = (req, res, next) => {
     '/auth/login',
     '/auth/register',
     '/auth/google',
+    '/auth/complete-profile',
     '/auth/forgot-password',
     '/auth/reset-password',
     '/auth/request-verification-email',

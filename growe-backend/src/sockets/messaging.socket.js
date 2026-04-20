@@ -247,11 +247,21 @@ export const initMessaging = (io) => {
     // --- Direct (1:1) voice / video — relay via user-${id} rooms (joined in signaling socket) ---
     socket.on('dm-call-invite', async (data, callback) => {
       try {
-        const { conversationId, callId, callType } = data || {};
+        const { conversationId, callId, callType, sessionBooking } = data || {};
         if (!conversationId || !callId || (callType !== 'voice' && callType !== 'video')) {
           callback?.({ error: 'Invalid call' });
           return;
         }
+        const normalizedSessionBooking =
+          sessionBooking && typeof sessionBooking === 'object'
+            ? {
+                bookingId: Number(sessionBooking.bookingId) || null,
+                callerRole:
+                  sessionBooking.callerRole === 'student' || sessionBooking.callerRole === 'tutor'
+                    ? sessionBooking.callerRole
+                    : null,
+              }
+            : null;
         await assertUserCanUseMessaging(socket);
         const otherId = await conversationModel.getDirectOtherUserId(conversationId, socket.userId);
         if (!otherId) {
@@ -265,6 +275,7 @@ export const initMessaging = (io) => {
           callType,
           fromUserId: socket.userId,
           fromDisplayName: me.display_name || me.email,
+          sessionBooking: normalizedSessionBooking,
         });
         callback?.({ success: true });
       } catch (err) {

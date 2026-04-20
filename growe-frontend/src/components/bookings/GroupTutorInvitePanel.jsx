@@ -65,7 +65,7 @@ export default function GroupTutorInvitePanel({
             <div className="flex gap-2 shrink-0">
               <Button
                 size="sm"
-                variant="secondary"
+                variant="danger"
                 onClick={() => onDecline?.(inv)}
                 disabled={actingId === inv.id}
               >
@@ -73,6 +73,7 @@ export default function GroupTutorInvitePanel({
               </Button>
               <Button
                 size="sm"
+                variant="success"
                 onClick={() => onAccept?.(inv)}
                 disabled={actingId === inv.id}
                 loading={actingId === inv.id}

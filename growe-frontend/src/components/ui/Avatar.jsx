@@ -13,14 +13,14 @@ export default function Avatar({ src, name, email, size = 'md', className = '' }
       <img
         src={src}
         alt=""
-        className={`${sz} rounded-full object-cover shrink-0 ring-2 ring-white dark:ring-slate-800 shadow-sm ${className}`}
+        className={`${sz} rounded-full object-cover shrink-0 ring-2 ring-white dark:ring-slate-800 shadow ${className}`}
       />
     );
   }
 
   return (
     <span
-      className={`${sz} rounded-full shrink-0 flex items-center justify-center font-semibold text-slate-800 bg-gradient-to-br from-growe/40 to-growe/80 ring-2 ring-white dark:ring-slate-800 shadow-sm ${className}`}
+      className={`${sz} rounded-full shrink-0 flex items-center justify-center font-bold text-slate-800 bg-gradient-to-br from-growe/45 to-growe/80 ring-2 ring-white dark:ring-slate-800 shadow ${className}`}
       aria-hidden
     >
       {initial}

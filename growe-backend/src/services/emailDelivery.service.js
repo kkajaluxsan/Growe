@@ -1,5 +1,6 @@
 import { getTransporter, smtpConfig } from '../config/smtp.js';
 import { hasResendApiKey, isResendApiConfigured, sendResendEmail } from '../config/resend.js';
+import { isBrevoApiConfigured, sendBrevoEmail } from '../config/brevo.js';
 import { logger } from '../utils/logger.js';
 
 const DEFAULT_RETRIES = Number(process.env.SMTP_MAX_RETRIES) || 3;
@@ -11,11 +12,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function logDevelopmentEmailStartupHint() {
   if (process.env.NODE_ENV === 'production') return;
   if (!isSmtpConfigured()) {
-    console.warn(
-      '[growe] Outbound email is not configured (no RESEND_API_KEY and no SMTP_*). Verification and password reset will fail until you set mail env — see growe-backend/.env.example.'
-    );
+    console.warn('[growe] Outbound email is not configured (no Resend/Brevo API key and no SMTP_*). Verification and password reset will fail until you set mail env — see growe-backend/.env.example.');
   } else if (isResendApiConfigured()) {
     console.info('[growe] Outbound mail: Resend HTTP API.');
+  } else if (isBrevoApiConfigured()) {
+    console.info('[growe] Outbound mail: Brevo HTTP API.');
   } else if (hasResendApiKey()) {
     console.info('[growe] Outbound mail: Nodemailer (USE_RESEND_HTTP_API=0).');
   }
@@ -49,9 +50,33 @@ function isRetryable(err) {
 export function isSmtpConfigured() {
   if (process.env.SMTP_DISABLED === '1' || process.env.SMTP_DISABLED === 'true') return false;
   if (isResendApiConfigured()) return true;
+  if (isBrevoApiConfigured()) return true;
   const user = process.env.SMTP_USER && String(process.env.SMTP_USER).trim();
   const host = process.env.SMTP_HOST && String(process.env.SMTP_HOST).trim();
   return Boolean(user || host);
+}
+
+async function sendBrevoWithRetry({ to, subject, text, html }, { retries = DEFAULT_RETRIES } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await sendBrevoEmail({ to, subject, text, html });
+      return { ok: true };
+    } catch (err) {
+      lastErr = err;
+      logger.warn('email_delivery_brevo_attempt_failed', {
+        err: err.message,
+        attempt,
+        to: typeof to === 'string' ? to : '[list]',
+      });
+      if (attempt < retries && isRetryable(err)) {
+        await sleep(RETRY_DELAY_MS * Math.pow(2, attempt));
+        continue;
+      }
+      break;
+    }
+  }
+  return { ok: false, error: lastErr };
 }
 
 async function sendNodemailerWithRetry(
@@ -137,6 +162,17 @@ export async function sendMailWithRetry(
       lastErr = smtpAfter.error || lastErr;
     }
     return { ok: false, error: lastErr };
+  }
+
+  if (isBrevoApiConfigured()) {
+    const brevoResult = await sendBrevoWithRetry({ to, subject, text, html }, { retries });
+    if (brevoResult.ok) return brevoResult;
+    logger.error('email_delivery_brevo_failed', {
+      err: brevoResult.error?.message,
+      to: typeof to === 'string' ? to : '[list]',
+      brevo: brevoResult.error?.brevoError,
+    });
+    return brevoResult;
   }
 
   const smtpResult = await sendNodemailerWithRetry({ to, subject, text, html }, { retries });

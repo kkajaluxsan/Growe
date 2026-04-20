@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 
 export default function Modal({ open, onClose, title, children, size = 'md' }) {
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
     const handleEscape = (e) => e.key === 'Escape' && onClose();
@@ -22,7 +24,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title ? 'modal-title' : undefined}
+      aria-labelledby={title ? titleId : undefined}
     >
       <div
         className={`w-full ${sizes[size] || sizes.md} bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 transition-all duration-200 scale-100`}
@@ -30,7 +32,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
       >
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-            <h2 id="modal-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               {title}
             </h2>
             <button

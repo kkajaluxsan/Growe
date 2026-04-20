@@ -47,13 +47,13 @@ export default function TutorRequestPanel({ bookings, onAccept, onDecline, busyI
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Button
-                variant="secondary"
+                variant="danger"
                 onClick={() => onDecline?.(b)}
                 disabled={busyId === b.id}
               >
                 Decline
               </Button>
-              <Button onClick={() => onAccept?.(b)} disabled={busyId === b.id} loading={busyId === b.id}>
+              <Button variant="success" onClick={() => onAccept?.(b)} disabled={busyId === b.id} loading={busyId === b.id}>
                 Accept
               </Button>
             </div>

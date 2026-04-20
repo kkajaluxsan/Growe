@@ -1,7 +1,7 @@
 export default function Skeleton({ className = '', ...props }) {
   return (
     <div
-      className={`animate-pulse rounded bg-slate-200 dark:bg-slate-700 ${className}`}
+      className={`animate-pulse rounded-xl bg-slate-200/90 dark:bg-slate-700/80 ${className}`}
       {...props}
     />
   );
@@ -9,7 +9,7 @@ export default function Skeleton({ className = '', ...props }) {
 
 export function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+    <div className="rounded-3xl border border-slate-200 dark:border-slate-700 p-6 bg-white/90 dark:bg-slate-800/85">
       <Skeleton className="h-5 w-1/3 mb-3" />
       <Skeleton className="h-4 w-full mb-2" />
       <Skeleton className="h-4 w-4/5" />

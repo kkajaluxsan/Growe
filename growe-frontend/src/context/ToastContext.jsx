@@ -36,6 +36,7 @@ export const ToastProvider = ({ children }) => {
   toast.success = (msg, opts) => add(msg, { ...opts, variant: 'success' });
   toast.error = (msg, opts) => add(msg, { ...opts, variant: 'error', duration: 6000 });
   toast.warning = (msg, opts) => add(msg, { ...opts, variant: 'warning' });
+  toast.info = (msg, opts) => add(msg, { ...opts, variant: 'info' });
 
   useEffect(() => {
     // Global API error toasts (emitted by axios client).
@@ -44,16 +45,31 @@ export const ToastProvider = ({ children }) => {
       if (!status) return;
       // Avoid spamming toasts for auth redirects; UI already handles those.
       if (status === 401) return;
+
+      // Extract detailed error description if validation failed.
+      const detailedMessage = (Array.isArray(data?.details) && data.details.length > 0)
+        ? data.details[0] // Show the first specific error (e.g. "Invalid time")
+        : (message || 'Request failed');
+
       if (status === 403 && data?.code === 'EMAIL_NOT_VERIFIED') {
-        toast.warning(message || 'Please verify your email to unlock all features');
+        toast.warning(detailedMessage || 'Please verify your email to unlock all features');
         return;
       }
       if (status === 403) {
-        toast.warning(message || 'Access denied');
+        toast.warning(detailedMessage || 'Access denied');
         return;
       }
       if (status === 400 || status === 409) {
-        toast.error(message || 'Request failed');
+        toast.error(detailedMessage);
+        return;
+      }
+      if (status === 429) {
+        toast.warning(detailedMessage || 'Too many requests. Try again in a moment.');
+        return;
+      }
+      // 502/503 often carry a specific message (e.g. AI not configured, upstream outage)
+      if (status === 502 || status === 503) {
+        toast.warning(detailedMessage || 'Service temporarily unavailable.');
         return;
       }
       if (status === 429) {
@@ -66,7 +82,7 @@ export const ToastProvider = ({ children }) => {
         return;
       }
       if (status >= 500) {
-        toast.error(message || 'Server error. Please try again.');
+        toast.error(detailedMessage || 'Server error. Please try again.');
         return;
       }
     };
@@ -91,6 +107,7 @@ function ToastContainer() {
     success: 'bg-growe text-slate-900 shadow-md',
     error: 'bg-red-600 text-white',
     warning: 'bg-amber-600 text-white',
+    info: 'bg-blue-600 text-white',
   };
 
   return (

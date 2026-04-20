@@ -25,9 +25,9 @@ export default function Layout() {
   const showBanner = offline || connectionState === 'reconnecting';
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-slate-900">
+    <div className="h-screen flex flex-col overflow-hidden bg-transparent">
       {showBanner && (
-        <div className="flex-shrink-0 bg-amber-500 text-amber-900 dark:bg-amber-600 dark:text-amber-100 px-4 py-2 text-center text-sm font-medium z-10">
+        <div className="flex-shrink-0 bg-amber-500 text-amber-900 dark:bg-amber-600 dark:text-amber-100 px-4 py-2 text-center text-sm font-semibold z-10">
           {offline ? "You're offline. Some features may be unavailable." : 'Reconnecting…'}
         </div>
       )}
@@ -38,7 +38,8 @@ export default function Layout() {
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <Header onMenuClick={() => setSidebarOpen(true)} />
           <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 scroll-smooth">
-            <div className="mx-auto w-full max-w-7xl min-h-0 p-6 md:p-8 flex flex-col flex-1">
+            <div className="mx-auto w-full max-w-7xl min-h-0 p-4 sm:p-6 md:p-8 flex flex-col flex-1">
+              <div className="h-2 w-full rounded-full bg-gradient-to-r from-growe/70 via-growe/20 to-transparent mb-4" aria-hidden />
               <Outlet />
             </div>
           </main>

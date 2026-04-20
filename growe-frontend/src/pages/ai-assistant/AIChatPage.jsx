@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import Button from '../../components/ui/Button';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
+import PageHeader from '../../components/ui/PageHeader';
 
 export default function AIChatPage() {
   const { toast } = useToast();
@@ -86,19 +87,21 @@ export default function AIChatPage() {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">AI Assistant</h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Academic help for your GROWE workspace</p>
-              {aiConfigured && providerOrder.length > 0 && (
-                <p className="mt-0.5 text-[11px] font-normal text-slate-400 dark:text-slate-500">
-                  Providers: {providerOrder.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' → ')}
-                </p>
+          <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+            <PageHeader
+              title="AI Assistant"
+              subtitle="Academic guidance for coursework, planning, and collaborative workflows."
+              actions={(
+                <Button type="button" variant="secondary" size="sm" onClick={clearChat} disabled={messages.length === 0 && !loading}>
+                  Clear chat
+                </Button>
               )}
-            </div>
-            <Button type="button" variant="secondary" size="sm" onClick={clearChat} disabled={messages.length === 0 && !loading}>
-              Clear chat
-            </Button>
+            />
+            {aiConfigured && providerOrder.length > 0 && (
+              <p className="mt-1 text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                Providers: {providerOrder.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' → ')}
+              </p>
+            )}
           </div>
 
           {!aiStatusLoading && !aiConfigured && (

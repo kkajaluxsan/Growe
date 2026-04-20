@@ -48,6 +48,22 @@ export const findPendingByGroupId = async (groupId) => {
   return rows[0] || null;
 };
 
+export const findLatestByGroupId = async (groupId) => {
+  const { rows } = await query(
+    `SELECT gti.*,
+            tu.email as tutor_email, tu.display_name as tutor_display_name,
+            ru.email as requester_email, ru.display_name as requester_display_name
+     FROM group_tutor_invites gti
+     JOIN users tu ON gti.tutor_user_id = tu.id
+     JOIN users ru ON gti.requested_by = ru.id
+     WHERE gti.group_id = $1
+     ORDER BY gti.created_at DESC
+     LIMIT 1`,
+    [groupId]
+  );
+  return rows[0] || null;
+};
+
 export const listPendingForTutor = async (tutorUserId, { limit = 20 } = {}) => {
   const { rows } = await query(
     `SELECT gti.*, sg.name as group_name, sg.description as group_description,
@@ -55,7 +71,7 @@ export const listPendingForTutor = async (tutorUserId, { limit = 20 } = {}) => {
      FROM group_tutor_invites gti
      JOIN study_groups sg ON gti.group_id = sg.id
      JOIN users ru ON gti.requested_by = ru.id
-     WHERE gti.tutor_user_id = $1 AND gti.status = 'pending'
+     WHERE gti.tutor_user_id = $1 AND gti.status = 'pending' AND gti.slot_start >= CURRENT_TIMESTAMP
      ORDER BY gti.slot_start ASC
      LIMIT $2`,
     [tutorUserId, limit]

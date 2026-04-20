@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useSocket } from '../../context/SocketContext';
+import { useAuth } from '../../context/AuthContext';
 
 function parseNotificationMetadata(n) {
   const m = n?.metadata;
@@ -17,20 +18,23 @@ function parseNotificationMetadata(n) {
 }
 
 /** Returns a client path to open for this notification, or null if none. */
-function getNotificationPath(n) {
+function getNotificationPath(n, user) {
   const meta = parseNotificationMetadata(n);
   const t = n?.type;
+  const isTutor = user?.roleName === 'tutor';
 
   if (t === 'assignment' && meta.assignmentId) {
     return `/assignments/${meta.assignmentId}`;
   }
   if (t === 'booking') {
-    return '/tutors';
+    return isTutor ? '/tutors?tab=bookings' : '/tutors';
   }
   if (t === 'meeting' && meta.meetingId) {
     return `/meetings/${meta.meetingId}`;
   }
   if (t === 'group') {
+    // Tutors are not group members until they accept; group detail would 403. Send them to dashboard invites/bookings.
+    if (meta.event === 'group_tutor_invite') return '/tutors?tab=bookings';
     if (meta.groupId) return `/groups/${meta.groupId}`;
     if (meta.meetingId) return `/meetings/${meta.meetingId}`;
     if (meta.event === 'group_tutor_invite_rejected') return '/groups';
@@ -41,6 +45,7 @@ function getNotificationPath(n) {
 
 export default function NotificationBell() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { socket } = useSocket();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -104,7 +109,7 @@ export default function NotificationBell() {
   };
 
   const handleItemClick = async (n) => {
-    const path = getNotificationPath(n);
+    const path = getNotificationPath(n, user);
     if (!n.is_read) {
       await markRead(n.id);
     }
@@ -122,7 +127,7 @@ export default function NotificationBell() {
           setOpen((o) => !o);
           if (!open) load();
         }}
-        className="relative p-2 rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-growe/10 dark:hover:bg-growe/15 transition-all duration-200"
+        className="relative p-2.5 rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-growe/10 dark:hover:bg-growe/15 transition-all duration-200"
         aria-label="Notifications"
         title="Notifications"
       >
@@ -135,21 +140,21 @@ export default function NotificationBell() {
           />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          <span className="absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] max-h-[min(70vh,24rem)] overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl z-50 flex flex-col">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 shrink-0">
+        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] max-h-[min(70vh,24rem)] overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-600 bg-white/95 dark:bg-slate-800/95 shadow-xl z-50 flex flex-col backdrop-blur-md">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
             <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notifications</span>
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={markAllRead}
-                className="text-xs text-growe dark:text-growe/90 hover:underline"
+                className="text-xs font-semibold text-growe-dark dark:text-growe/90 hover:underline"
               >
                 Mark all read
               </button>
@@ -163,18 +168,18 @@ export default function NotificationBell() {
               <p className="p-4 text-sm text-slate-500 text-center">No notifications yet.</p>
             )}
             {items.map((n) => {
-              const path = getNotificationPath(n);
+              const path = getNotificationPath(n, user);
               return (
               <button
                 key={n.id}
                 type="button"
                 onClick={() => handleItemClick(n)}
-                className={`w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-700/50 ${
+                className={`w-full text-left px-4 py-3 border-b border-slate-100 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors duration-150 ${
                   !n.is_read ? 'bg-growe/5 dark:bg-growe/10' : ''
                 } ${path ? 'cursor-pointer' : ''}`}
               >
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100 line-clamp-2">{n.title}</p>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 line-clamp-2">{n.message}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">{n.message}</p>
                 <p className="text-[10px] text-slate-400 mt-1">
                   {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
                 </p>

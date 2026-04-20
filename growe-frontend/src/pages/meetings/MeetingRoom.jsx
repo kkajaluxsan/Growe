@@ -34,6 +34,8 @@ function videoGridClass(participantCount) {
   return 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-w-[1920px] mx-auto w-full';
 }
 
+const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export default function MeetingRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -49,6 +51,7 @@ export default function MeetingRoom() {
   const [videoOff, setVideoOff] = useState(false);
   const [error, setError] = useState('');
   const [joined, setJoined] = useState(false);
+  const [meetingValidated, setMeetingValidated] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('Meeting');
   const [meetingConversation, setMeetingConversation] = useState(null);
@@ -91,9 +94,26 @@ export default function MeetingRoom() {
   };
 
   useEffect(() => {
+    let active = true;
     api.get(`/meetings/${id}`)
-      .then(({ data }) => setMeetingTitle(data?.title || 'Meeting'))
-      .catch((err) => toast.error(err.response?.data?.error || 'Failed to load meeting'));
+      .then(({ data }) => {
+        if (!active) return;
+        setMeetingTitle(data?.title || 'Meeting');
+        if (data?.ended_at) {
+          setError('This meeting has already ended.');
+        } else {
+          const anchor = new Date(data?.scheduled_at || data?.created_at).getTime();
+          if (!Number.isNaN(anchor) && Date.now() - anchor > MEETING_OPEN_WINDOW_MS) {
+            setError('This meeting link has expired.');
+          } else {
+            setMeetingValidated(true);
+          }
+        }
+      })
+      .catch((err) => {
+        if (active) setError(err.response?.data?.error || 'Failed to load meeting');
+      });
+    return () => { active = false; };
   }, [id, toast]);
 
   useEffect(() => {
@@ -105,7 +125,7 @@ export default function MeetingRoom() {
   }, [id, user, toast]);
 
   useEffect(() => {
-    if (!socket || !user) return;
+    if (!socket || !user || !meetingValidated || error) return;
 
     const initMedia = async () => {
       try {
@@ -199,7 +219,7 @@ export default function MeetingRoom() {
       Object.keys(peersRef.current).forEach((k) => delete peersRef.current[k]);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [socket, user, id, navigate]);
+  }, [socket, user, id, navigate, meetingValidated, error]);
 
   const replaceVideoTrack = (newTrack) => {
     const stream = localStreamRef.current;

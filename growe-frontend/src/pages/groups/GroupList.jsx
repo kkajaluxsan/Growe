@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Skeleton from '../../components/ui/Skeleton';
+import PageHeader from '../../components/ui/PageHeader';
 
 export default function GroupList() {
   const navigate = useNavigate();
@@ -34,15 +35,15 @@ export default function GroupList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Study groups</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Collaborate with peers in shared spaces.</p>
-        </div>
-        <Button type="button" onClick={() => navigate('/groups/new')}>
-          Create group
-        </Button>
-      </div>
+      <PageHeader
+        title="Study Groups"
+        subtitle="Collaborate with peers in shared academic spaces."
+        actions={(
+          <Button type="button" onClick={() => navigate('/groups/new')}>
+            Create group
+          </Button>
+        )}
+      />
       {error && (
         <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 text-sm border border-red-200 dark:border-red-800">
           {error}

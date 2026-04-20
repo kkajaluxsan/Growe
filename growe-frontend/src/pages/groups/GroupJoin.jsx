@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import PageHeader from '../../components/ui/PageHeader';
 
 function useQueryParams() {
   const { search } = useLocation();
@@ -45,6 +46,11 @@ export default function GroupJoin() {
 
   return (
     <div className="max-w-xl">
+      <PageHeader
+        title="Join Study Group"
+        subtitle="Validating your invite and enrolling you in the selected group."
+        className="mb-4"
+      />
       <Card className="py-10 text-center">
         {loading ? (
           <div className="space-y-3">
