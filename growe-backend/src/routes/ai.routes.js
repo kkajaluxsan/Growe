@@ -17,5 +17,6 @@ const aiLimiter = rateLimit({
 
 router.get('/status', authenticate, requireVerified, aiController.status);
 router.post('/chat', authenticate, requireVerified, aiLimiter, validateAiChat, aiController.chat);
+router.post('/flashcards', authenticate, requireVerified, aiLimiter, aiController.generateFlashcards);
 
 export default router;

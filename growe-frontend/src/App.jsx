@@ -15,6 +15,7 @@ const GroupList = lazy(() => import('./pages/groups/GroupList'));
 const CreateGroup = lazy(() => import('./pages/groups/CreateGroup'));
 const GroupDetail = lazy(() => import('./pages/groups/GroupDetail'));
 const GroupJoin = lazy(() => import('./pages/groups/GroupJoin'));
+const FocusRoom = lazy(() => import('./pages/groups/FocusRoom'));
 const AssignmentList = lazy(() => import('./pages/assignments/AssignmentList'));
 const CreateAssignment = lazy(() => import('./pages/assignments/CreateAssignment'));
 const AssignmentEdit = lazy(() => import('./pages/assignments/AssignmentEdit'));
@@ -27,6 +28,7 @@ const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const MessagingPage = lazy(() => import('./pages/messaging/MessagingPage'));
 const AIChatPage = lazy(() => import('./pages/ai-assistant/AIChatPage'));
+const AiFlashcards = lazy(() => import('./pages/ai-assistant/AiFlashcards'));
 
 function App() {
   return (
@@ -59,6 +61,7 @@ function App() {
           <Route path="groups/join" element={<ProtectedRoute requireVerified><GroupJoin /></ProtectedRoute>} />
           <Route path="groups/new" element={<ProtectedRoute requireVerified><CreateGroup /></ProtectedRoute>} />
           <Route path="groups/:id" element={<ProtectedRoute requireVerified><GroupDetail /></ProtectedRoute>} />
+          <Route path="groups/:id/focus" element={<ProtectedRoute requireVerified><FocusRoom /></ProtectedRoute>} />
           <Route path="assignments" element={<ProtectedRoute requireVerified><AssignmentList /></ProtectedRoute>} />
           <Route path="assignments/new" element={<ProtectedRoute requireVerified><CreateAssignment /></ProtectedRoute>} />
           <Route path="assignments/:id" element={<ProtectedRoute requireVerified><AssignmentEdit /></ProtectedRoute>} />
@@ -71,6 +74,7 @@ function App() {
           <Route path="profile" element={<ProtectedRoute requireVerified><ProfilePage /></ProtectedRoute>} />
           <Route path="messages" element={<ProtectedRoute requireVerified><MessagingPage /></ProtectedRoute>} />
           <Route path="ai-assistant" element={<ProtectedRoute requireVerified><AIChatPage /></ProtectedRoute>} />
+          <Route path="ai-flashcards" element={<ProtectedRoute requireVerified><AiFlashcards /></ProtectedRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

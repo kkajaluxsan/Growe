@@ -51,3 +51,13 @@ export const search = async (req, res, next) => {
     next(err);
   }
 };
+
+export const getLeaderboard = async (req, res, next) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const leaderboard = await userModel.getLeaderboard(limit);
+    return res.json({ leaderboard });
+  } catch (err) {
+    next(err);
+  }
+};

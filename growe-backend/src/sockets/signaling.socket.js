@@ -43,6 +43,23 @@ export const initSignaling = (httpServer) => {
       socket.join('admin-dashboard');
     }
 
+    socket.on('join-focus-room', (data) => {
+      if (data?.groupId) socket.join(`focus-group-${data.groupId}`);
+    });
+    socket.on('leave-focus-room', (data) => {
+      if (data?.groupId) socket.leave(`focus-group-${data.groupId}`);
+    });
+    socket.on('start-focus-timer', (data) => {
+      if (data?.groupId && data?.endTime) {
+        io.to(`focus-group-${data.groupId}`).emit('focus-timer-started', { endTime: data.endTime });
+      }
+    });
+    socket.on('stop-focus-timer', (data) => {
+      if (data?.groupId) {
+        io.to(`focus-group-${data.groupId}`).emit('focus-timer-stopped');
+      }
+    });
+
     socket.on('join-room', async (data, callback) => {
       try {
         const { meetingId } = data;
@@ -161,6 +178,20 @@ export const initSignaling = (httpServer) => {
       const { meetingId, active } = data || {};
       if (meetingId) {
         socket.to(`meeting-${meetingId}`).emit('speaking', { userId: socket.userId, active: !!active });
+      }
+    });
+
+    socket.on('whiteboard-draw', (data) => {
+      const { meetingId, stroke } = data || {};
+      if (meetingId && stroke) {
+        socket.to(`meeting-${meetingId}`).emit('whiteboard-draw', { userId: socket.userId, stroke });
+      }
+    });
+
+    socket.on('whiteboard-clear', (data) => {
+      const { meetingId } = data || {};
+      if (meetingId) {
+        socket.to(`meeting-${meetingId}`).emit('whiteboard-clear', { userId: socket.userId });
       }
     });
 
