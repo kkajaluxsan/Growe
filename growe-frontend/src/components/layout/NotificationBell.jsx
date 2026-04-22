@@ -40,6 +40,10 @@ function getNotificationPath(n, user) {
     if (meta.event === 'group_tutor_invite_rejected') return '/groups';
   }
 
+  if (meta.event === 'rating_prompt') {
+    return '/tutors';
+  }
+
   return null;
 }
 
@@ -114,7 +118,12 @@ export default function NotificationBell() {
       await markRead(n.id);
     }
     if (path) {
-      navigate(path);
+      const meta = parseNotificationMetadata(n);
+      if (meta.event === 'rating_prompt' && meta.bookingId) {
+        navigate(path, { state: { promptRatingBookingId: meta.bookingId } });
+      } else {
+        navigate(path);
+      }
       setOpen(false);
     }
   };

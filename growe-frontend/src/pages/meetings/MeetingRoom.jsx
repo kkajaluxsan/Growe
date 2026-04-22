@@ -441,33 +441,42 @@ export default function MeetingRoom() {
           </aside>
         )}
 
-        <div className="relative min-h-0 flex-1 overflow-y-auto pb-36 pt-4">
-          {!connected && joined && (
-            <div className="mx-auto mb-3 max-w-3xl rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
-              Trying to reconnect… Your call may be affected.
+        <div className={`relative min-h-0 flex-1 flex flex-col xl:flex-row ${whiteboardOpen ? 'overflow-hidden' : 'overflow-y-auto pb-36 pt-4'}`}>
+          {whiteboardOpen && (
+            <div className="flex-1 bg-gray-900 relative min-h-[50vh] xl:min-h-0 border-b xl:border-b-0 xl:border-r border-white/10 z-10">
+              <Whiteboard socket={socket} meetingId={id} onClose={() => setWhiteboardOpen(false)} />
             </div>
           )}
-          <div className={`${gridClass} gap-3 px-4 md:gap-4 lg:px-6`}>
-            <LocalVideoTile
-              videoRef={localVideoRef}
-              name="You"
-              isSpeaking={speakingUser != null && user?.id != null && String(speakingUser) === String(user.id)}
-              muted={muted}
-              cameraOff={videoOff}
-              handRaised={handRaised}
-              screenSharing={screenSharing}
-              displayName={user?.displayName}
-              email={user?.email}
-            />
-            {Object.entries(remoteStreams).map(([uid, stream]) => (
-              <RemoteVideoTile
-                key={uid}
-                userId={uid}
-                stream={stream}
-                handRaised={handsRaised[uid]}
-                isSpeaking={speakingUser != null && String(speakingUser) === String(uid)}
-                displayName={participantMeta[uid]?.email}
+
+          <div className={`${whiteboardOpen ? 'w-full xl:w-[320px] 2xl:w-[360px] shrink-0 bg-gray-950/50 p-4 flex flex-row xl:flex-col gap-4 overflow-auto pb-36 snap-x' : `w-full ${gridClass} gap-3 px-4 md:gap-4 lg:px-6`}`}>
+            {!connected && joined && (
+              <div className="col-span-full mx-auto mb-3 max-w-3xl rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
+                Trying to reconnect… Your call may be affected.
+              </div>
+            )}
+            <div className={whiteboardOpen ? 'w-[240px] xl:w-full shrink-0 snap-start' : ''}>
+              <LocalVideoTile
+                videoRef={localVideoRef}
+                name="You"
+                isSpeaking={speakingUser != null && user?.id != null && String(speakingUser) === String(user.id)}
+                muted={muted}
+                cameraOff={videoOff}
+                handRaised={handRaised}
+                screenSharing={screenSharing}
+                displayName={user?.displayName}
+                email={user?.email}
               />
+            </div>
+            {Object.entries(remoteStreams).map(([uid, stream]) => (
+              <div key={uid} className={whiteboardOpen ? 'w-[240px] xl:w-full shrink-0 snap-start' : ''}>
+                <RemoteVideoTile
+                  userId={uid}
+                  stream={stream}
+                  handRaised={handsRaised[uid]}
+                  isSpeaking={speakingUser != null && String(speakingUser) === String(uid)}
+                  displayName={participantMeta[uid]?.email}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -509,11 +518,7 @@ export default function MeetingRoom() {
         </div>
       )}
 
-      {whiteboardOpen && (
-        <div className="absolute inset-0 top-16 z-30 flex items-center justify-center p-4 bg-gray-950/80 backdrop-blur-sm">
-          <Whiteboard socket={socket} meetingId={id} onClose={() => setWhiteboardOpen(false)} />
-        </div>
-      )}
+
 
       {showLeaveConfirm && (
         <div

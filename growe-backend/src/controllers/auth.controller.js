@@ -60,7 +60,12 @@ const issueAuthResponse = async (res, user) => {
   const accessToken = signToken({ userId: user.id, email: user.email }, ACCESS_TOKEN_TTL);
   const refreshToken = generateVerificationToken(32);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
-  await refreshTokenModel.create({ userId: user.id, token: refreshToken, expiresAt });
+  try {
+    await refreshTokenModel.create({ userId: user.id, token: refreshToken, expiresAt });
+  } catch (err) {
+    console.error('Error creating refresh token during login:', err);
+    throw err;
+  }
 
   res.cookie('refresh_token', refreshToken, getRefreshCookieOptions());
 
@@ -335,9 +340,15 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const emailRaw = req.body?.email;
+    const password = req.body?.password;
 
-    const user = await userModel.findByEmail(email.toLowerCase().trim());
+    if (!emailRaw || typeof emailRaw !== 'string' || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const email = emailRaw.toLowerCase().trim();
+    const user = await userModel.findByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }

@@ -271,7 +271,7 @@ export default function Dashboard() {
       { to: '/admin', title: 'Admin Console', desc: 'Users, verification, and metrics', icon: 'shield' },
       { to: '/assignments', title: 'Assignments', desc: 'Review assignment lifecycle', icon: 'book' },
       { to: '/messages', title: 'Messages', desc: 'Respond to platform conversations', icon: 'chat' },
-      { to: '/ai-assistant', title: 'AI Assistant', desc: 'Campus AI tools', icon: 'spark' },
+      { to: '/ai-assistant', title: 'Growe Assistant', desc: 'Campus AI tools', icon: 'spark' },
     ]
     : [
       { to: '/groups', title: 'Student Groups', desc: 'Create and join collaborative groups', icon: 'users' },

@@ -2,7 +2,7 @@ import * as tutorModel from '../models/tutor.model.js';
 import * as bookingModel from '../models/booking.model.js';
 import * as userModel from '../models/user.model.js';
 import { generateSlots } from '../utils/slotGenerator.js';
-import { isPast, parseYYYYMMDDLocal, startOfLocalDay } from '../utils/timeUtils.js';
+import { isPast, parseYYYYMMDDLocal, startOfLocalDay, combineDateAndTimeLocal } from '../utils/timeUtils.js';
 import * as groupModel from '../models/group.model.js';
 
 function toDateString(val) {
@@ -10,20 +10,53 @@ function toDateString(val) {
   if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10);
   const d = new Date(val);
   if (isNaN(d.getTime())) return null;
-  // Use local date parts to avoid timezone shifting (DATE columns should be timezone-free).
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId } = {}) => {
+function parseTime(timeStr) {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':').map(Number);
+  return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+}
+
+function formatSec(totalSec) {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
+/**
+ * Generate all candidate slot start points on a 30-minute grid within a window.
+ * Also includes the exact window start if it doesn't land on a grid point.
+ */
+function generateGridStartPoints(windowStartSec, windowEndSec, durationSec) {
+  const GRID_INTERVAL = 30 * 60;
+  const startPoints = new Set();
+
+  // Include exact window start
+  if (windowStartSec + durationSec <= windowEndSec) {
+    startPoints.add(windowStartSec);
+  }
+
+  // Include every 30-min grid point within the window
+  const firstGrid = Math.ceil(windowStartSec / GRID_INTERVAL) * GRID_INTERVAL;
+  for (let g = firstGrid; g + durationSec <= windowEndSec; g += GRID_INTERVAL) {
+    startPoints.add(g);
+  }
+
+  return [...startPoints].sort((a, b) => a - b);
+}
+
+export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, requestedDuration } = {}) => {
   const today = toDateString(new Date()) || new Date().toISOString().slice(0, 10);
   const defaultTo = new Date();
   defaultTo.setDate(defaultTo.getDate() + 14);
   const toStr = toDateString(toDate) || toDateString(defaultTo);
-
   const fromStr = toDateString(fromDate) || today;
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromStr) && fromStr < today) {
     const err = new Error('fromDate cannot be in the past');
     err.statusCode = 400;
@@ -36,61 +69,65 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId }
     toDate: toStr,
   });
 
-  const result = [];
+  const slotsMap = new Map();
+
   for (const av of availabilities) {
     const dateStr = toDateString(av.available_date) || String(av.available_date).slice(0, 10);
-    const startTime = typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00';
-    const endTime = typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59';
+    const windowStartSec = parseTime(typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00');
+    const windowEndSec = parseTime(typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59');
+    
+    const duration = parseInt(requestedDuration, 10) || av.session_duration || 60;
+    const durationSec = duration * 60;
 
-    const slots = generateSlots({
-      dateStr,
-      startTime,
-      endTime,
-      sessionDuration: av.session_duration,
-    });
+    const startPoints = generateGridStartPoints(windowStartSec, windowEndSec, durationSec);
 
-    for (const slot of slots) {
-      if (isPast(slot.start)) continue;
+    for (const s of startPoints) {
+      const slotStart = combineDateAndTimeLocal(dateStr, formatSec(s));
+      const slotEnd = combineDateAndTimeLocal(dateStr, formatSec(s + durationSec));
+      if (!slotStart || !slotEnd) continue;
 
-      // Skip slots where the student already has an overlapping booking
+      const NOW_LENIENT = Date.now() - 15 * 60 * 1000;
+      if (slotStart.getTime() < NOW_LENIENT) continue;
+
+      const startIso = slotStart.toISOString();
+      const endIso = slotEnd.toISOString();
+
+      // Check for student overlap
+      let studentFree = true;
       if (studentId) {
-        const hasOverlap = await bookingModel.hasStudentOverlapForSlot(
-          studentId,
-          slot.start,
-          slot.end
-        );
-        if (hasOverlap) continue;
+        const hasOverlap = await bookingModel.hasStudentOverlapForSlot(studentId, startIso, endIso);
+        if (hasOverlap) studentFree = false;
       }
 
-      const count = await bookingModel.countBookingsForSlot(
-        av.id,
-        slot.start,
-        slot.end
-      );
-      const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
-        tutorId: av.tutor_id,
-        startTime: slot.start,
-        endTime: slot.end,
-        excludeAvailabilityId: av.id,
-      });
-      if (tutorOverlapCount > 0) continue;
-      if (count < av.max_students_per_slot) {
-        result.push({
-          availabilityId: av.id,
+      if (studentFree) {
+        const count = await bookingModel.countBookingsForSlot(av.id, startIso, endIso);
+        const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
           tutorId: av.tutor_id,
-          tutorEmail: av.tutor_email,
-          start: slot.start,
-          end: slot.end,
-          date: dateStr,
+          startTime: startIso,
+          endTime: endIso,
+          excludeAvailabilityId: av.id,
         });
+
+        if (tutorOverlapCount === 0 && count < av.max_students_per_slot) {
+          const key = `${startIso}|${endIso}`;
+          if (!slotsMap.has(key)) {
+            slotsMap.set(key, {
+              availabilityId: av.id,
+              tutorId: av.tutor_id,
+              start: startIso,
+              end: endIso,
+              date: dateStr,
+            });
+          }
+        }
       }
     }
   }
 
-  return result.sort((a, b) => new Date(a.start) - new Date(b.start));
+  return Array.from(slotsMap.values()).sort((a, b) => new Date(a.start) - new Date(b.start));
 };
 
-export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
+export const getAvailableTutorsByDate = async ({ date, groupId, userId, requestedDuration }) => {
   if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const err = new Error('date (YYYY-MM-DD) is required');
     err.statusCode = 400;
@@ -116,49 +153,54 @@ export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
   }
 
   const availabilities = await tutorModel.listAvailabilityForTutorsOnDate(date);
-
   const byTutor = new Map();
 
   for (const av of availabilities) {
     const dateStr = toDateString(av.available_date) || String(av.available_date).slice(0, 10);
-    const startTime = typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00';
-    const endTime = typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59';
+    const windowStartSec = parseTime(typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00');
+    const windowEndSec = parseTime(typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59');
 
-    const slots = generateSlots({
-      dateStr,
-      startTime,
-      endTime,
-      sessionDuration: av.session_duration,
-    });
+    const duration = parseInt(requestedDuration, 10) || av.session_duration || 60;
+    const durationSec = duration * 60;
 
-    for (const slot of slots) {
-      if (isPast(slot.start)) continue;
+    const startPoints = generateGridStartPoints(windowStartSec, windowEndSec, durationSec);
 
-      const count = await bookingModel.countBookingsForSlot(av.id, slot.start, slot.end);
+    for (const s of startPoints) {
+      const slotStart = combineDateAndTimeLocal(dateStr, formatSec(s));
+      const slotEnd = combineDateAndTimeLocal(dateStr, formatSec(s + durationSec));
+      if (!slotStart || !slotEnd) continue;
+
+      const NOW_LENIENT = Date.now() - 15 * 60 * 1000;
+      if (slotStart.getTime() < NOW_LENIENT) continue;
+
+      const startIso = slotStart.toISOString();
+      const endIso = slotEnd.toISOString();
+
+      const count = await bookingModel.countBookingsForSlot(av.id, startIso, endIso);
       const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
         tutorId: av.tutor_id,
-        startTime: slot.start,
-        endTime: slot.end,
+        startTime: startIso,
+        endTime: endIso,
         excludeAvailabilityId: av.id,
       });
-      if (tutorOverlapCount > 0) continue;
-      if (count >= av.max_students_per_slot) continue;
-
-      if (!byTutor.has(av.tutor_id)) {
-        byTutor.set(av.tutor_id, {
-          tutorId: av.tutor_id,
-          email: av.tutor_email,
-          displayName: av.tutor_display_name || null,
-          bio: av.tutor_bio || null,
-          subjects: Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [],
-          slots: [],
+      
+      if (tutorOverlapCount === 0 && count < av.max_students_per_slot) {
+        if (!byTutor.has(av.tutor_id)) {
+          byTutor.set(av.tutor_id, {
+            tutorId: av.tutor_id,
+            email: av.tutor_email,
+            displayName: av.tutor_display_name || null,
+            bio: av.tutor_bio || null,
+            subjects: Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [],
+            slots: [],
+          });
+        }
+        byTutor.get(av.tutor_id).slots.push({
+          availabilityId: av.id,
+          startTime: startIso,
+          endTime: endIso,
         });
       }
-      byTutor.get(av.tutor_id).slots.push({
-        availabilityId: av.id,
-        startTime: slot.start,
-        endTime: slot.end,
-      });
     }
   }
 
@@ -189,10 +231,6 @@ function tutorSearchMatches(t, q) {
   return parts.some((p) => p.includes(n));
 }
 
-/**
- * Tutors with a free slot exactly matching [startISO, endISO] on the same calendar day.
- * Optional `subject` boosts sort order; `q` filters name/subject/skills (client can also filter).
- */
 export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, forUserId } = {}) => {
   if (!startISO || !endISO) {
     const err = new Error('start and end (ISO timestamps) are required');
@@ -227,45 +265,38 @@ export const getAvailableTutorsForSlot = async ({ startISO, endISO, subject, q, 
 
   for (const av of availabilities) {
     const datePart = toDateString(av.available_date) || String(av.available_date).slice(0, 10);
-    const startTime =
-      typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00';
-    const endTime =
-      typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59';
+    const startTimeFromDb = typeof av.start_time === 'string' ? av.start_time : av.start_time?.slice(0, 8) || '00:00:00';
+    const endTimeFromDb = typeof av.end_time === 'string' ? av.end_time : av.end_time?.slice(0, 8) || '23:59:59';
 
-    const slots = generateSlots({
-      dateStr: datePart,
-      startTime,
-      endTime,
-      sessionDuration: av.session_duration,
-    });
+    const windowStart = combineDateAndTimeLocal(datePart, startTimeFromDb);
+    const windowEnd = combineDateAndTimeLocal(datePart, endTimeFromDb);
+    
+    if (windowStart && windowEnd && windowStart.getTime() <= start.getTime() && windowEnd.getTime() >= end.getTime()) {
+      const count = await bookingModel.countBookingsForSlot(av.id, startIso, endIso);
+      const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
+        tutorId: av.tutor_id,
+        startTime: startIso,
+        endTime: endIso,
+        excludeAvailabilityId: av.id,
+      });
 
-    const match = slots.find((s) => s.start === startIso && s.end === endIso);
-    if (!match) continue;
-
-    const count = await bookingModel.countBookingsForSlot(av.id, match.start, match.end);
-    const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
-      tutorId: av.tutor_id,
-      startTime: match.start,
-      endTime: match.end,
-      excludeAvailabilityId: av.id,
-    });
-    if (tutorOverlapCount > 0) continue;
-    if (count >= av.max_students_per_slot) continue;
-
-    const subs = Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [];
-    candidates.push({
-      tutorProfileId: av.tutor_id,
-      tutorUserId: av.tutor_user_id,
-      email: av.tutor_email,
-      displayName: av.tutor_display_name || 'Tutor',
-      avatarUrl: av.tutor_avatar_url || null,
-      bio: av.tutor_bio || null,
-      subjects: subs,
-      availabilityId: av.id,
-      slotStart: match.start,
-      slotEnd: match.end,
-      subjectMatch: subjectMatches(subs, subject || ''),
-    });
+      if (tutorOverlapCount === 0 && count < av.max_students_per_slot) {
+        const subs = Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [];
+        candidates.push({
+          tutorProfileId: av.tutor_id,
+          tutorUserId: av.tutor_user_id,
+          email: av.tutor_email,
+          displayName: av.tutor_display_name || 'Tutor',
+          avatarUrl: av.tutor_avatar_url || null,
+          bio: av.tutor_bio || null,
+          subjects: subs,
+          availabilityId: av.id,
+          slotStart: startIso,
+          slotEnd: endIso,
+          subjectMatch: subjectMatches(subs, subject || ''),
+        });
+      }
+    }
   }
 
   const tutorIds = [...new Set(candidates.map((c) => c.tutorProfileId))];

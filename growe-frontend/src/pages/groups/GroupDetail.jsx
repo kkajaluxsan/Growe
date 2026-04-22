@@ -24,6 +24,7 @@ export default function GroupDetail() {
     d.setDate(d.getDate() + 1);
     return localDateInputMin(d);
   });
+  const [scheduleDuration, setScheduleDuration] = useState(''); // '' means default
   const [availableTutors, setAvailableTutors] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -113,14 +114,14 @@ export default function GroupDetail() {
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
     setAvailableTutors([]);
-    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id }, skipGlobalErrorToast: true })
+    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id, duration: scheduleDuration || undefined }, skipGlobalErrorToast: true })
       .then(({ data }) => setAvailableTutors(Array.isArray(data) ? data : []))
       .catch(() => {
         setAvailableTutors([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [scheduleDate, toast, id]);
+  }, [scheduleDate, toast, id, scheduleDuration]);
 
   const isCreator = !!group && !!user && group.creator_id === user.id;
 
@@ -445,6 +446,20 @@ export default function GroupDetail() {
               min={localDateInputMin()}
               className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Duration</label>
+            <select
+              value={scheduleDuration}
+              onChange={(e) => setScheduleDuration(e.target.value)}
+              className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
+            >
+              <option value="">Default</option>
+              <option value="30">30 Minutes</option>
+              <option value="45">45 Minutes</option>
+              <option value="60">60 Minutes</option>
+              <option value="90">90 Minutes</option>
+            </select>
           </div>
           <Button variant="secondary" onClick={loadSlotsForDate} disabled={slotsLoading}>
             {slotsLoading ? 'Loading...' : 'Show available tutors'}

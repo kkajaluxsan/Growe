@@ -27,8 +27,10 @@
     "dev:frontend": "npm run dev:web"
   },
   "devDependencies": {
+    "chromedriver": "^147.0.4",
     "concurrently": "^9.2.1",
     "kill-port": "^2.0.1",
+    "selenium-webdriver": "^4.43.0",
     "wait-on": "^8.0.1"
   }
 }

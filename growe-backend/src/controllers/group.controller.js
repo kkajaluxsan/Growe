@@ -430,9 +430,21 @@ export const getMeetingById = async (req, res, next) => {
     if (!meeting) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
-    const member = await groupModel.getMember(meeting.group_id, req.user.id);
-    if (!member || member.status !== 'approved') {
-      return res.status(403).json({ error: 'You must be a group member to view this meeting' });
+    
+    // Authorization: Must be group member or booking participant
+    if (meeting.group_id) {
+      const member = await groupModel.getMember(meeting.group_id, req.user.id);
+      if (!member || member.status !== 'approved') {
+        return res.status(403).json({ error: 'You must be a group member to view this meeting' });
+      }
+    } else if (meeting.booking_id) {
+      const isTutor = req.user.roleName === 'tutor' && meeting.tutor_email === req.user.email;
+      const isStudent = meeting.booking_student_id === req.user.id;
+      if (!isTutor && !isStudent) {
+        return res.status(403).json({ error: 'You are not a participant in this meeting' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Unauthorized meeting access' });
     }
     const anchor = new Date(meeting.scheduled_at || meeting.created_at).getTime();
     const isExpired = !Number.isNaN(anchor) && Date.now() - anchor > 24 * 60 * 60 * 1000;
@@ -441,6 +453,38 @@ export const getMeetingById = async (req, res, next) => {
     }
     res.json(meeting);
   } catch (err) {
+    next(err);
+  }
+};
+
+export const endMeeting = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const meeting = await meetingModel.findById(id);
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    // Authorization: Must be group member or booking participant
+    if (meeting.group_id) {
+      const member = await groupModel.getMember(meeting.group_id, req.user.id);
+      if (!member || member.status !== 'approved') {
+        return res.status(403).json({ error: 'You must be a member to end this meeting' });
+      }
+    } else if (meeting.booking_id) {
+      const isTutor = req.user.roleName === 'tutor' && meeting.tutor_email === req.user.email;
+      const isStudent = meeting.booking_student_id === req.user.id;
+      if (!isTutor && !isStudent) {
+        return res.status(403).json({ error: 'You are not a participant in this meeting' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Unauthorized meeting access' });
+    }
+
+    const terminated = await meetingService.endMeeting(id);
+    res.json(terminated);
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 };

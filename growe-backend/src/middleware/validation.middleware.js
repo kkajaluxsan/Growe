@@ -288,6 +288,22 @@ export const validateAvailabilityCreate = (req, res, next) => {
     const sd = parseInt(sessionDuration, 10);
     if (isNaN(sd) || sd < 15 || sd > 480) {
       errors.push('Session duration must be between 15 and 480 minutes');
+    } else if (
+      dateTrimmed &&
+      startTime && typeof startTime === 'string' &&
+      endTime && typeof endTime === 'string' &&
+      parseYYYYMMDDLocal(dateTrimmed)
+    ) {
+      const wStart = combineDateAndTimeLocal(dateTrimmed, startTime);
+      const wEnd = combineDateAndTimeLocal(dateTrimmed, endTime);
+      if (wStart && wEnd && !Number.isNaN(wStart.getTime()) && !Number.isNaN(wEnd.getTime())) {
+        const windowMinutes = (wEnd.getTime() - wStart.getTime()) / 60000;
+        if (windowMinutes < 15) {
+          errors.push('Availability window must be at least 15 minutes');
+        } else if (sd > windowMinutes) {
+          errors.push(`Session duration (${sd} min) cannot exceed the availability window (${Math.round(windowMinutes)} min)`);
+        }
+      }
     }
   }
 

@@ -347,9 +347,32 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
     }
   };
 
+  const effectiveDuration = durationMode === 'custom' ? sessionDuration : presetDuration;
+  const windowMinutes = (() => {
+    if (!startTime || !endTime) return 0;
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    return (eH * 60 + eM) - (sH * 60 + sM);
+  })();
+  const durationExceedsWindow = effectiveDuration > windowMinutes && windowMinutes > 0;
+
+  const estimatedSlots = (() => {
+    if (!startTime || !endTime || windowMinutes <= 0 || effectiveDuration <= 0 || effectiveDuration > windowMinutes) return 0;
+    const GRID = 30;
+    const [sH, sM] = startTime.split(':').map(Number);
+    const startMin = sH * 60 + sM;
+    const endMin = startMin + windowMinutes;
+    const firstGrid = Math.ceil(startMin / GRID) * GRID;
+    const starts = new Set();
+    if (startMin + effectiveDuration <= endMin) starts.add(startMin);
+    for (let g = firstGrid; g + effectiveDuration <= endMin; g += GRID) starts.add(g);
+    return starts.size;
+  })();
+
   const isTimeValid = (() => {
     if (!availableDate) return false;
     if (availableDate === todayStr && startTime < currentTimeStr) return false;
+    if (durationExceedsWindow) return false;
     const [sH, sM] = startTime.split(':').map(Number);
     const [eH, eM] = endTime.split(':').map(Number);
     return eH > sH || (eH === sH && eM > sM);
@@ -442,6 +465,16 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
             {adding ? 'Adding...' : 'Add'}
           </Button>
         </form>
+        {durationExceedsWindow && (
+          <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            ⚠️ Session duration ({effectiveDuration} min) exceeds the availability window ({windowMinutes} min). Reduce the duration or widen the time window.
+          </div>
+        )}
+        {!durationExceedsWindow && estimatedSlots > 0 && availableDate && (
+          <div className="mt-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-sm">
+            ✓ Creates <strong>{estimatedSlots}</strong> bookable slot{estimatedSlots !== 1 ? 's' : ''} ({effectiveDuration} min each) on a 30-min grid
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -556,26 +589,10 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
   };
 
   const openSessionChat = async (booking) => {
-    const otherUserId = booking?.student_id;
-    if (!otherUserId) {
-      toast.error('Student info is missing for this booking.');
-      return;
-    }
-    try {
-      const { data } = await api.post(`/conversations/direct/${otherUserId}`);
-      navigate('/messages', {
-        state: {
-          conversation: data,
-          callSession: {
-            conversationId: data.id,
-            bookingId: booking.id,
-            callerRole: 'tutor',
-          },
-        },
-      });
-      toast.success('Session chat opened. Use voice/video buttons to start the meeting.');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not open session chat');
+    if (booking.meeting_id) {
+      navigate(`/meetings/${booking.meeting_id}`);
+    } else {
+      toast.error('Meeting room is not available for this session yet.');
     }
   };
 
@@ -615,7 +632,14 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
             <tr key={b.id} className="border-b">
               <td className="px-4 py-2">{b.student_display_name || 'Student'}</td>
               <td className="px-4 py-2">{new Date(b.start_time).toLocaleString()}</td>
-              <td className="px-4 py-2 capitalize">{b.status}</td>
+              <td className="px-4 py-2 capitalize">
+                {b.status.replace(/_/g, ' ')}
+                {b.session_ended && b.status === 'confirmed' && (
+                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                    Session ended
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-2">
                 {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
                   <div className="flex flex-wrap gap-2">
@@ -624,17 +648,26 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
                   </div>
                 )}
                 {b.status === 'confirmed' && (
-                  <div className="flex flex-wrap gap-2">
-                    {isSessionLive(b) && (
-                      <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
-                    )}
-                    {hasStarted(b) && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>Complete</Button>
-                        <Button size="sm" variant="warning" onClick={() => handleStatus(b.id, 'no_show')}>No-Show</Button>
+                  <div className="space-y-2">
+                    {b.session_ended && (
+                      <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                        📋 This session has ended. Mark it as <strong>Complete</strong> so the student can rate you.
                       </div>
                     )}
-                    <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
+                    <div className="flex flex-wrap gap-2">
+                      {isSessionLive(b) && (
+                        <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
+                      )}
+                      {hasStarted(b) && (
+                        <>
+                          <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
+                            {b.session_ended ? '✓ Mark Complete' : 'Complete'}
+                          </Button>
+                          <Button size="sm" variant="warning" onClick={() => handleStatus(b.id, 'no_show')}>No-Show</Button>
+                        </>
+                      )}
+                      <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
+                    </div>
                   </div>
                 )}
               </td>
@@ -677,8 +710,8 @@ function TutorRatingsSection() {
               {count > 0 ? average.toFixed(1) : '—'}
             </div>
             <div className="text-amber-500 text-2xl mt-1">
-              {'★'.repeat(roundedAvg)}
-              <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - roundedAvg))}</span>
+              {'★'.repeat(Math.max(0, Math.min(5, roundedAvg)))}
+              <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - Math.max(0, Math.min(5, roundedAvg))))}</span>
             </div>
             <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {count} {count === 1 ? 'review' : 'reviews'}
@@ -724,7 +757,7 @@ function TutorRatingsSection() {
                   <div className="flex items-center gap-2">
                     <span className="text-amber-500 text-sm">{'★'.repeat(r.rating)}<span className="text-slate-300 dark:text-slate-600">{'★'.repeat(5 - r.rating)}</span></span>
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {r.student_display_name || 'Student'}
+                      {r.student_display_name || r.student_email || 'Anonymous Student'}
                     </span>
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">

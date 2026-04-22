@@ -89,7 +89,7 @@ export default function AIChatPage() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
             <PageHeader
-              title="AI Assistant"
+              title="Growe Assistant"
               subtitle="Academic guidance for coursework, planning, and collaborative workflows."
               actions={(
                 <Button type="button" variant="secondary" size="sm" onClick={clearChat} disabled={messages.length === 0 && !loading}>
@@ -138,7 +138,7 @@ export default function AIChatPage() {
                       <span className="h-2 w-2 animate-bounce rounded-full bg-growe-dark/80" style={{ animationDelay: '150ms' }} />
                       <span className="h-2 w-2 animate-bounce rounded-full bg-growe-dark/80" style={{ animationDelay: '300ms' }} />
                     </span>
-                    AI is typing…
+                    Growe is typing…
                   </span>
                 </div>
               </div>

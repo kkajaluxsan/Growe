@@ -64,6 +64,17 @@ export const addAvailability = async (req, res, next) => {
       isRecurring = false,
       maxStudentsPerSlot = 1,
     } = req.body;
+
+    // Check for overlapping availability on the same date
+    const overlap = await tutorModel.findOverlappingAvailability(
+      profile.id, availableDate, startTime, endTime
+    );
+    if (overlap) {
+      return res.status(409).json({
+        error: `This window overlaps with existing availability (${overlap.start_time?.slice(0, 5)}–${overlap.end_time?.slice(0, 5)}). Delete or edit the existing slot first.`,
+      });
+    }
+
     const availability = await tutorModel.createAvailability({
       tutorId: profile.id,
       availableDate,
@@ -126,6 +137,16 @@ export const updateAvailability = async (req, res, next) => {
       maxStudentsPerSlot = 1,
     } = req.body;
 
+    // Check for overlapping availability on the same date (exclude current slot)
+    const overlap = await tutorModel.findOverlappingAvailability(
+      profile.id, availableDate, startTime, endTime, req.params.id
+    );
+    if (overlap) {
+      return res.status(409).json({
+        error: `This window overlaps with existing availability (${overlap.start_time?.slice(0, 5)}–${overlap.end_time?.slice(0, 5)}). Delete or edit the existing slot first.`,
+      });
+    }
+
     const updated = await tutorModel.updateAvailability(req.params.id, profile.id, {
       availableDate,
       startTime,
@@ -145,12 +166,13 @@ export const updateAvailability = async (req, res, next) => {
 
 export const getAvailableSlots = async (req, res, next) => {
   try {
-    const { tutorId, fromDate, toDate } = req.query;
+    const { tutorId, fromDate, toDate, duration } = req.query;
     const slots = await availabilityService.getAvailableSlots({
       tutorId: tutorId || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
       studentId: req.user?.id || undefined,
+      requestedDuration: duration,
     });
     res.json(slots);
   } catch (err) {
@@ -163,13 +185,23 @@ export const getAvailableSlots = async (req, res, next) => {
 
 export const getAvailableTutorsByDate = async (req, res, next) => {
   try {
-    const { date, groupId } = req.query;
+    const { date, groupId, duration } = req.query;
     const tutors = await availabilityService.getAvailableTutorsByDate({
       date,
       groupId,
       userId: req.user.id,
+      requestedDuration: duration,
     });
-    res.json(tutors);
+    // Attach average rating
+    const tutorUserIds = tutors.map((t) => t.userId || t.user_id).filter(Boolean);
+    const ratingsMap = await ratingModel.getAverageByTutorIds(tutorUserIds);
+    const enriched = tutors.map((t) => {
+      const uid = t.userId || t.user_id;
+      const ratingInfo = ratingsMap.get(uid) || { average: 0, count: 0 };
+      return { ...t, avg_rating: ratingInfo.average, rating_count: ratingInfo.count };
+    });
+
+    res.json(enriched);
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({ error: err.message });
@@ -210,7 +242,16 @@ export const getAvailableForGroupSlot = async (req, res, next) => {
       q: typeof q === 'string' ? q : '',
       forUserId: req.user.id,
     });
-    res.json(tutors);
+    // Attach average rating
+    const tutorUserIds = tutors.map((t) => t.userId || t.user_id).filter(Boolean);
+    const ratingsMap = await ratingModel.getAverageByTutorIds(tutorUserIds);
+    const enriched = tutors.map((t) => {
+      const uid = t.userId || t.user_id;
+      const ratingInfo = ratingsMap.get(uid) || { average: 0, count: 0 };
+      return { ...t, avg_rating: ratingInfo.average, rating_count: ratingInfo.count };
+    });
+
+    res.json(enriched);
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({ error: err.message });

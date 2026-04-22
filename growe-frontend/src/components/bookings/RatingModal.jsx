@@ -56,8 +56,8 @@ export default function RatingModal({ open, onClose, booking, onSubmitted }) {
     try {
       const api = (await import('../../services/api')).default;
       await api.post(`/bookings/${booking.id}/rate`, {
-        rating,
-        comment: comment.trim() || undefined,
+        rating: Number(rating),
+        comment: comment.trim() || null,
       });
       onSubmitted?.();
       onClose();

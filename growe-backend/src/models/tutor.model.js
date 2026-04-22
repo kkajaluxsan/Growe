@@ -151,3 +151,25 @@ export const listTutorProfiles = async ({ limit = 50, offset = 0 } = {}) => {
   );
   return rows;
 };
+
+/**
+ * Check for overlapping availability windows for the same tutor on the same date.
+ * Used to prevent tutors from creating conflicting time windows.
+ */
+export const findOverlappingAvailability = async (tutorId, availableDate, startTime, endTime, excludeId = null) => {
+  const sql = `
+    SELECT id, available_date, start_time, end_time, session_duration
+    FROM tutor_availability
+    WHERE tutor_id = $1
+      AND available_date::date = $2::date
+      AND start_time < $4
+      AND end_time > $3
+      ${excludeId ? 'AND id <> $5' : ''}
+    LIMIT 1
+  `;
+  const params = excludeId
+    ? [tutorId, availableDate, startTime, endTime, excludeId]
+    : [tutorId, availableDate, startTime, endTime];
+  const { rows } = await query(sql, params);
+  return rows[0] || null;
+};

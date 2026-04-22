@@ -196,6 +196,24 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
 
   const reliabilityScore = newStatus === 'completed' ? 1.0 : newStatus === 'no_show' ? 0 : null;
   const updated = await bookingModel.updateStatus(bookingId, newStatus, reliabilityScore);
+  
+  if (newStatus === 'confirmed') {
+    const fullBooking = await bookingModel.findById(bookingId);
+    if (fullBooking) {
+      const meetingModel = await import('../models/meeting.model.js');
+      const tutorProfile = await (await import('../models/tutor.model.js')).findProfileByUserId(fullBooking.tutor_user_id);
+      
+      const meeting = await meetingModel.create({
+        title: `1-on-1 Tutoring Session`,
+        createdBy: fullBooking.student_id,
+        scheduledAt: fullBooking.start_time,
+        tutorId: tutorProfile?.id,
+        bookingId: bookingId
+      });
+      await bookingModel.setMeetingId(bookingId, meeting.id);
+    }
+  }
+
   const full = await bookingModel.findById(bookingId);
   if (full) {
     Promise.resolve()

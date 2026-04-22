@@ -36,8 +36,14 @@ export default function TutorList() {
   const { socket } = useSocket();
 
   const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
+  const [duration, setDuration] = useState(''); // '' means use tutor default
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
+
+  // Expose state setter for E2E testing
+  if (import.meta.env.VITE_TEST_MODE === 'true' || import.meta.env.DEV) {
+    window._setSelectedDate = setSelectedDate;
+  }
 
   const [selectedKey, setSelectedKey] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -52,14 +58,14 @@ export default function TutorList() {
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
     setSlots([]);
-    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate } })
+    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate, duration: duration || undefined } })
       .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
       .catch(() => {
         setSlots([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [selectedDate, toast]);
+  }, [selectedDate, duration, toast]);
 
   const fetchBookings = useCallback((isSilent = false) => {
     if (!isSilent) setBookingsLoading(true);
@@ -73,7 +79,7 @@ export default function TutorList() {
 
   useEffect(() => {
     fetchSlots();
-  }, [fetchSlots]);
+  }, [fetchSlots, duration]);
 
   useEffect(() => {
     fetchBookings();
@@ -216,26 +222,10 @@ export default function TutorList() {
   };
 
   const openSessionChat = async (booking) => {
-    const otherUserId = booking?.tutor_user_id;
-    if (!otherUserId) {
-      toast.error('Tutor info missing for this booking.');
-      return;
-    }
-    try {
-      const { data } = await api.post(`/conversations/direct/${otherUserId}`);
-      navigate('/messages', {
-        state: {
-          conversation: data,
-          callSession: {
-            conversationId: data.id,
-            bookingId: booking.id,
-            callerRole: 'student',
-          },
-        },
-      });
-      toast.success('Session chat opened. Use voice/video buttons to join the session.');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not open session chat');
+    if (booking.meeting_id) {
+      navigate(`/meetings/${booking.meeting_id}`);
+    } else {
+      toast.error('Meeting room is not available for this session yet.');
     }
   };
 
@@ -279,6 +269,17 @@ export default function TutorList() {
                 min={localDateInputMin()}
                 className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
               />
+              <select
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+              >
+                <option value="">Default Duration</option>
+                <option value="30">30 Minutes</option>
+                <option value="45">45 Minutes</option>
+                <option value="60">60 Minutes</option>
+                <option value="90">90 Minutes</option>
+              </select>
               <Button size="sm" variant="secondary" onClick={fetchSlots} disabled={slotsLoading}>
                 {slotsLoading ? 'Loading...' : 'Refresh'}
               </Button>
@@ -341,10 +342,15 @@ export default function TutorList() {
                     {new Date(b.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold capitalize text-slate-700 dark:text-slate-200">
-                    {b.status === 'waiting_tutor_confirmation' ? 'waiting_tutor_confirmation' : b.status}
+                    {b.status === 'waiting_tutor_confirmation' ? 'Awaiting Tutor' : b.status.replace(/_/g, ' ')}
                   </span>
+                  {b.session_ended && b.status === 'confirmed' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                      Session ended — awaiting tutor completion
+                    </span>
+                  )}
                   {b.status === 'confirmed' && isSessionLive(b) && (
                     <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>
                       Join Session

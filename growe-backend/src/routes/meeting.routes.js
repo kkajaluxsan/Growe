@@ -14,5 +14,6 @@ router.use(requireProfileComplete);
 router.post('/', validateMeetingCreate, groupController.createMeeting);
 router.get('/', groupController.listMeetings);
 router.get('/:id', groupController.getMeetingById);
+router.post('/:id/end', groupController.endMeeting);
 
 export default router;
