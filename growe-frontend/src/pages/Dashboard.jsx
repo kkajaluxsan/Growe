@@ -5,6 +5,7 @@ import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
+import LeaderboardWidget from '../components/ui/LeaderboardWidget';
 import { useToast } from '../context/ToastContext';
 import { useSocket } from '../context/SocketContext';
 
@@ -349,11 +350,14 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card>
-            <h2 className="ui-section-title mb-4">Academic Calendar</h2>
-            <MiniAcademicCalendar highlightedDays={highlightDays} />
-            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Highlighted dates include meetings, bookings, and deadlines.</p>
-          </Card>
+          <div className="space-y-4 md:space-y-6">
+            <LeaderboardWidget />
+            <Card>
+              <h2 className="ui-section-title mb-4">Academic Calendar</h2>
+              <MiniAcademicCalendar highlightedDays={highlightDays} />
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Highlighted dates include meetings, bookings, and deadlines.</p>
+            </Card>
+          </div>
         </div>
       )}
     </div>

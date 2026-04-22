@@ -8,6 +8,7 @@ import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import ShareButton from '../../components/ui/ShareButton';
 import ChatWindow from '../messaging/ChatWindow';
+import Whiteboard from './Whiteboard';
 import { LocalVideoTile, RemoteVideoTile } from './meeting/VideoTile';
 import MeetingControlBar from './meeting/MeetingControlBar';
 import { useToast } from '../../context/ToastContext';
@@ -61,6 +62,7 @@ export default function MeetingRoom() {
   const [handRaised, setHandRaised] = useState(false);
   const [handsRaised, setHandsRaised] = useState({});
   const [speakingUser, setSpeakingUser] = useState(null);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const screenStreamRef = useRef(null);
   const originalVideoTrackRef = useRef(null);
   const meetingContainerRef = useRef(null);
@@ -376,6 +378,15 @@ export default function MeetingRoom() {
           </button>
           <button
             type="button"
+            onClick={() => setWhiteboardOpen((o) => !o)}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+              whiteboardOpen ? 'bg-growe/20 text-growe' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            Whiteboard
+          </button>
+          <button
+            type="button"
             onClick={toggleFullScreen}
             className="rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
             title={isFullScreen ? 'Exit full screen' : 'Full screen'}
@@ -495,6 +506,12 @@ export default function MeetingRoom() {
               onConversationLoad={() => {}}
             />
           </div>
+        </div>
+      )}
+
+      {whiteboardOpen && (
+        <div className="absolute inset-0 top-16 z-30 flex items-center justify-center p-4 bg-gray-950/80 backdrop-blur-sm">
+          <Whiteboard socket={socket} meetingId={id} onClose={() => setWhiteboardOpen(false)} />
         </div>
       )}
 

@@ -1,0 +1,5 @@
+-- Up
+ALTER TABLE users ADD COLUMN xp INT DEFAULT 0;
+
+-- Down
+ALTER TABLE users DROP COLUMN xp;

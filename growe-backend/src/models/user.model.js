@@ -3,7 +3,7 @@ import { query } from '../config/db.js';
 const USER_ROW_SELECT = `u.id, u.email, u.password_hash, u.role_id, u.is_verified, u.is_active,
             u.display_name, u.avatar_url, u.provider, u.provider_id,
             u.academic_year, u.semester, u.specialization, u.index_number, u.nic_number, u.phone_number,
-            u.profile_completed,
+            u.profile_completed, u.xp,
             u.created_at, u.updated_at, r.name as role_name`;
 
 export const create = async ({
@@ -288,5 +288,25 @@ export const listAll = async ({ limit = 50, offset = 0, roleName, isVerified, is
   sql += ` ORDER BY u.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
   params.push(limit, offset);
   const { rows } = await query(sql, params);
+  return rows;
+};
+
+export const addXp = async (userId, amount) => {
+  const { rows } = await query(
+    'UPDATE users SET xp = COALESCE(xp, 0) + $1 WHERE id = $2 RETURNING xp, id',
+    [amount, userId]
+  );
+  return rows[0];
+};
+
+export const getLeaderboard = async (limit = 10) => {
+  const { rows } = await query(
+    `SELECT u.id, u.display_name, u.email, u.avatar_url, COALESCE(u.xp, 0) as xp
+     FROM users u
+     WHERE u.is_active = true AND u.role_id = (SELECT id FROM roles WHERE name = 'student' LIMIT 1)
+     ORDER BY COALESCE(u.xp, 0) DESC
+     LIMIT $1`,
+    [limit]
+  );
   return rows;
 };
