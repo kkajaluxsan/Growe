@@ -127,7 +127,7 @@ export const searchUsersNotInGroup = async (
 
 export const listMembers = async (groupId) => {
   const { rows } = await query(
-    `SELECT gm.id, gm.group_id, gm.user_id, gm.status, gm.joined_at, u.email
+    `SELECT gm.id, gm.group_id, gm.user_id, gm.status, gm.joined_at, u.email, u.display_name
      FROM group_members gm
      JOIN users u ON gm.user_id = u.id
      WHERE gm.group_id = $1 ORDER BY gm.status, gm.joined_at`,

@@ -266,7 +266,7 @@ export default function GroupDetail() {
     setCreating(true);
     api.post('/meetings', {
       groupId: id,
-      title: `Group Meeting with ${tutor.email}`,
+      title: `Group Meeting with ${tutor.display_name || tutor.displayName || 'Tutor'}`,
       scheduledAt: slot.startTime,
       tutorId: tutor.tutorId,
       slot: {
@@ -396,8 +396,7 @@ export default function GroupDetail() {
               {memberResults.map((u) => (
                 <div key={u.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                   <div className="text-sm">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">{u.email}</div>
-                    {u.display_name && <div className="text-slate-500 dark:text-slate-400">{u.display_name}</div>}
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{u.display_name || 'User'}</div>
                   </div>
                   <Button size="sm" onClick={() => handleAddMember(u.id)} disabled={addingMemberId === u.id}>
                     {addingMemberId === u.id ? 'Adding…' : 'Add'}
@@ -414,7 +413,7 @@ export default function GroupDetail() {
         {members.map((m) => (
           <li key={m.id} className="flex justify-between text-slate-700 dark:text-slate-300">
             <span className="flex items-center gap-2">
-              <span>{m.email}</span>
+              <span>{m.display_name || 'Member'}</span>
               <span className="text-xs text-slate-500 dark:text-slate-400">({m.status})</span>
             </span>
             {isCreator && m.status === 'pending' ? (
@@ -458,7 +457,7 @@ export default function GroupDetail() {
             {availableTutors.map((t) => (
               <div key={t.tutorId} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col gap-1 mb-2">
-                  <div className="font-medium text-slate-900 dark:text-slate-100">{t.email}</div>
+                  <div className="font-medium text-slate-900 dark:text-slate-100">{t.display_name || t.displayName || 'Tutor'}</div>
                   <div className="text-sm text-slate-600 dark:text-slate-400">{t.bio || 'No bio'}</div>
                 </div>
                 {Array.isArray(t.slots) && t.slots.length > 0 ? (

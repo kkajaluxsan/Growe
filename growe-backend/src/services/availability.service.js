@@ -148,6 +148,7 @@ export const getAvailableTutorsByDate = async ({ date, groupId, userId }) => {
         byTutor.set(av.tutor_id, {
           tutorId: av.tutor_id,
           email: av.tutor_email,
+          displayName: av.tutor_display_name || null,
           bio: av.tutor_bio || null,
           subjects: Array.isArray(av.tutor_subjects) ? av.tutor_subjects : [],
           slots: [],
