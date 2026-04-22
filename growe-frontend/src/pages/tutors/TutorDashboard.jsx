@@ -259,6 +259,10 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
     maxStudentsPerSlot: 1,
   });
 
+  const todayStr = localDateInputMin();
+  const now = new Date();
+  const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
   const handleAdd = async (e) => {
     e.preventDefault();
     
@@ -304,6 +308,10 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   };
 
   const saveEdit = async (id) => {
+    if (editForm.availableDate === todayStr && editForm.startTime < currentTimeStr) {
+      toast.warning('Start time cannot be in the past for today');
+      return;
+    }
     const [startH, startM] = editForm.startTime.split(':').map(Number);
     const [endH, endM] = editForm.endTime.split(':').map(Number);
     if (endH < startH || (endH === startH && endM <= startM)) {
@@ -340,6 +348,8 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   };
 
   const isTimeValid = (() => {
+    if (!availableDate) return false;
+    if (availableDate === todayStr && startTime < currentTimeStr) return false;
     const [sH, sM] = startTime.split(':').map(Number);
     const [eH, eM] = endTime.split(':').map(Number);
     return eH > sH || (eH === sH && eM > sM);
@@ -366,6 +376,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
             <input
               type="time"
               value={startTime}
+              min={availableDate === todayStr ? currentTimeStr : undefined}
               onChange={(e) => setStartTime(e.target.value)}
               className="border rounded py-2 px-3"
             />
@@ -445,7 +456,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                       <input type="date" value={editForm.availableDate} min={localDateInputMin()} onChange={(e) => setEditForm((p) => ({ ...p, availableDate: e.target.value }))} className="border rounded py-2 px-3" />
-                      <input type="time" value={editForm.startTime} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="border rounded py-2 px-3" />
+                      <input type="time" value={editForm.startTime} min={editForm.availableDate === todayStr ? currentTimeStr : undefined} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="border rounded py-2 px-3" />
                       <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))} className="border rounded py-2 px-3" />
                       <input type="number" min={15} max={480} value={editForm.durationMode === 'custom' ? editForm.sessionDuration : editForm.presetDuration} onChange={(e) => {
                         const n = parseInt(e.target.value, 10) || 15;
@@ -454,7 +465,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
                       <input type="number" min={1} max={20} value={editForm.maxStudentsPerSlot} onChange={(e) => setEditForm((p) => ({ ...p, maxStudentsPerSlot: parseInt(e.target.value, 10) || 1 }))} className="border rounded py-2 px-3" />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>
+                      <Button size="sm" disabled={editForm.availableDate === todayStr && editForm.startTime < currentTimeStr} onClick={() => saveEdit(a.id)}>Save</Button>
                       <Button size="sm" variant="secondary" onClick={() => setEditingId('')}>Cancel</Button>
                     </div>
                   </div>

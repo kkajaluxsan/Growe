@@ -36,6 +36,13 @@ export default function MyAvailability() {
     maxStudentsPerSlot: 1,
   });
 
+  const todayStr = localDateInputMin();
+  const now = new Date();
+  const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const isToday = availableDate === todayStr;
+  const isAddInvalid = !availableDate || !startTime || !endTime || startTime >= endTime || (isToday && startTime < currentTimeStr);
+
   const load = () => {
     setLoading(true);
     api.get('/tutors/availability')
@@ -90,6 +97,7 @@ export default function MyAvailability() {
 
   const handleAdd = async (e) => {
     e.preventDefault();
+    if (isAddInvalid) return;
     setError('');
     setSaving(true);
     try {
@@ -252,6 +260,7 @@ export default function MyAvailability() {
             <input
               type="time"
               value={startTime}
+              min={isToday ? currentTimeStr : undefined}
               onChange={(e) => setStartTime(e.target.value)}
               className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
             />
@@ -313,7 +322,7 @@ export default function MyAvailability() {
               className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 w-24"
             />
           </div>
-          <Button type="submit" disabled={saving} loading={saving}>
+          <Button type="submit" disabled={saving || isAddInvalid} loading={saving}>
             Add
           </Button>
         </form>
@@ -341,7 +350,7 @@ export default function MyAvailability() {
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                       <input type="date" value={editForm.availableDate} min={localDateInputMin()} onChange={(e) => setEditForm((p) => ({ ...p, availableDate: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
-                      <input type="time" value={editForm.startTime} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
+                      <input type="time" value={editForm.startTime} min={editForm.availableDate === todayStr ? currentTimeStr : undefined} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                       <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                       <input type="number" min={15} max={480} value={editForm.durationMode === 'custom' ? editForm.sessionDuration : editForm.presetDuration} onChange={(e) => {
                         const n = parseInt(e.target.value, 10) || 15;
@@ -350,7 +359,7 @@ export default function MyAvailability() {
                       <input type="number" min={1} max={20} value={editForm.maxStudentsPerSlot} onChange={(e) => setEditForm((p) => ({ ...p, maxStudentsPerSlot: parseInt(e.target.value, 10) || 1 }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>
+                      <Button size="sm" disabled={!editForm.startTime || !editForm.endTime || editForm.startTime >= editForm.endTime || (editForm.availableDate === todayStr && editForm.startTime < currentTimeStr)} onClick={() => saveEdit(a.id)}>Save</Button>
                       <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                     </div>
                   </div>
