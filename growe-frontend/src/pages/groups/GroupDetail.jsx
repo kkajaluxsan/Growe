@@ -8,6 +8,7 @@ import ShareButton from '../../components/ui/ShareButton';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { localDateInputMin } from '../../utils/dateInput';
+import GroupQuizzes from '../../components/groups/GroupQuizzes';
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -411,6 +412,8 @@ export default function GroupDetail() {
           )}
         </Card>
       )}
+
+      <GroupQuizzes groupId={id} />
 
       <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-2">Members ({members.length})</h2>
       <ul className="space-y-2">
