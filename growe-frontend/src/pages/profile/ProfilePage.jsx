@@ -155,12 +155,12 @@ export default function ProfilePage() {
     return `Year ${ay} – Semester ${sem}`;
   };
 
-  return (
-    <div className="max-w-2xl space-y-6">
-      <PageHeader
-        title="Profile"
-        subtitle="Manage your academic identity and account details."
-      />
+ return (
+  <div className="w-full max-w-5xl space-y-6">
+    <PageHeader
+      title="Profile"
+      subtitle="Manage your academic identity and account details."
+    />
 
       {user?.indexNumber || user?.nicNumber || user?.specialization || user?.academicYear != null ? (
         <Card>

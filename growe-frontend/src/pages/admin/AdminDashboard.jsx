@@ -187,15 +187,18 @@ export default function AdminDashboard() {
                           Suspend
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => handleRemoveUser(u.id, u.email)}
-                        disabled={currentUser?.id === u.id}
-                        title={currentUser?.id === u.id ? 'Cannot remove yourself' : undefined}
-                      >
-                        Remove
-                      </Button>
+                  <Button
+  size="sm"
+  variant="danger"
+  className="bg-red-800 hover:bg-red-900 text-white mx-auto block"
+  onClick={() => handleRemoveUser(u.id, u.email)}
+  disabled={currentUser?.id === u.id}
+  title={currentUser?.id === u.id ? 'Cannot remove yourself' : undefined}
+>
+  Remove
+</Button>
+                      
+                  
                     </td>
                   </tr>
                 ))}
