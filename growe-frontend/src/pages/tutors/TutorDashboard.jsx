@@ -805,12 +805,29 @@ function MiniCalendarWidget({ bookings = [], availability = [] }) {
             const todaysAvailability = availability.filter(a => a.available_date === exactDateStr);
             const hasAvailability = todaysAvailability.length > 0;
 
+            let tooltip = 'No events';
+            if (hasActivity || hasAvailability) {
+              const lines = [];
+              todaysBookings.forEach(b => {
+                 const start = new Date(b.start_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+                 const end = new Date(b.end_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+                 lines.push(`• Booking: ${start} - ${end} (${b.status})`);
+              });
+              todaysAvailability.forEach(a => {
+                 const start = a.start_time?.slice(0, 5) || '';
+                 const end = a.end_time?.slice(0, 5) || '';
+                 lines.push(`• Available: ${start} - ${end}`);
+              });
+              tooltip = lines.join('\n');
+            }
+
             return (
               <div
                 key={d}
-                className={`relative h-10 flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-300 ${
+                title={tooltip}
+                className={`group relative h-10 flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-300 ${
                   isToday 
-                  ? 'bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white font-bold shadow-lg transform scale-110 z-10' 
+                  ? 'bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white font-bold shadow-lg z-10' 
                   : 'text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-slate-800 font-medium cursor-default'
                 }`}
               >
