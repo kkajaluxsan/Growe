@@ -19,7 +19,7 @@ function getDayKey(date) {
   return typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10);
 }
 
-const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MEETING_OPEN_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function getMeetingAnchorTime(meeting) {
   const raw = meeting?.scheduled_at || meeting?.created_at;
