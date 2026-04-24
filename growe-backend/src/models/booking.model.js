@@ -172,13 +172,14 @@ export const countBookingsForSlot = async (availabilityId, startTime, endTime) =
   return rows[0].count;
 };
 
-export const hasStudentOverlapForSlot = async (studentId, startTime, endTime) => {
+export const getStudentOverlapStatusForSlot = async (studentId, startTime, endTime) => {
   const { rows } = await query(
-    `SELECT COUNT(*)::int as count FROM bookings
-     WHERE student_id = $1 AND status NOT IN ('cancelled') AND start_time < $3 AND end_time > $2`,
+    `SELECT status FROM bookings
+     WHERE student_id = $1 AND status NOT IN ('cancelled', 'rejected') AND start_time < $3 AND end_time > $2
+     ORDER BY created_at DESC LIMIT 1`,
     [studentId, startTime, endTime]
   );
-  return rows[0].count > 0;
+  return rows[0]?.status || null;
 };
 
 /**
