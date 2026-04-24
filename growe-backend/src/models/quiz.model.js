@@ -68,23 +68,36 @@ export const getQuestionsByQuiz = async (quizId) => {
   return rows;
 };
 
-export const createAttempt = async ({ quizId, userId, score, total }) => {
+export const createAttempt = async ({ quizId, userId, score, total, answers }) => {
   const { rows } = await query(
-    `INSERT INTO group_quiz_attempts (quiz_id, user_id, score, total)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (quiz_id, user_id) DO UPDATE SET score = EXCLUDED.score, total = EXCLUDED.total, created_at = NOW()
-     RETURNING id, quiz_id, user_id, score, total, created_at`,
-    [quizId, userId, score, total]
+    `INSERT INTO group_quiz_attempts (quiz_id, user_id, score, total, answers)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (quiz_id, user_id) DO UPDATE SET score = EXCLUDED.score, total = EXCLUDED.total, answers = EXCLUDED.answers, created_at = NOW()
+     RETURNING id, quiz_id, user_id, score, total, answers, created_at`,
+    [quizId, userId, score, total, JSON.stringify(answers || [])]
   );
   return rows[0];
 };
 
 export const getAttempt = async (quizId, userId) => {
   const { rows } = await query(
-    `SELECT id, quiz_id, user_id, score, total, created_at
+    `SELECT id, quiz_id, user_id, score, total, answers, created_at
      FROM group_quiz_attempts
      WHERE quiz_id = $1 AND user_id = $2`,
     [quizId, userId]
   );
   return rows[0] || null;
+};
+
+export const getAttemptsByQuiz = async (quizId) => {
+  const { rows } = await query(
+    `SELECT qa.id, qa.quiz_id, qa.user_id, qa.score, qa.total, qa.answers, qa.created_at,
+            u.display_name, u.email
+     FROM group_quiz_attempts qa
+     JOIN users u ON qa.user_id = u.id
+     WHERE qa.quiz_id = $1
+     ORDER BY qa.created_at DESC`,
+    [quizId]
+  );
+  return rows;
 };

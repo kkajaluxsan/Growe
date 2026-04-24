@@ -370,7 +370,7 @@ export default function GroupDetail() {
           {openingGroupChat ? 'Opening…' : 'Group chat'}
         </Button>
         <Button variant="secondary" onClick={() => navigate(`/groups/${id}/focus`)}>
-          Enter Focus Room 🎯
+          Enter Focus Room
         </Button>
         <Button variant="secondary" onClick={handleCreateMeeting}>Start Meeting Now</Button>
         <Button variant="secondary" onClick={() => { setScheduleModalOpen(true); setAvailableTutors([]); }}>

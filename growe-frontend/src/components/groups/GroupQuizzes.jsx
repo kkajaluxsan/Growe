@@ -37,10 +37,10 @@ export default function GroupQuizzes({ groupId }) {
   return (
     <Card className="mb-6">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-        <h2 className="font-semibold text-lg text-slate-900 dark:text-slate-100">AI Quizzes</h2>
+        <h2 className="font-semibold text-lg text-slate-900 dark:text-slate-100">Growe Quizzes</h2>
         {isTutor && (
           <Button size="sm" onClick={() => setGeneratorOpen(true)}>
-            Generate AI Quiz ✨
+            Growe Quiz ✨
           </Button>
         )}
       </div>

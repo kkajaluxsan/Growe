@@ -15,14 +15,7 @@ export const generateQuiz = async (req, res, next) => {
       return res.status(400).json({ error: 'Document is required' });
     }
 
-    // Verify user is tutor in the group
-    const isMember = await groupModel.isMember(groupId, req.user.id);
-    if (!isMember) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    // Note: Assuming any member (or we enforce tutor only if req.user.role === 'tutor' or if we check group_members.role)
-    // Let's just check if they are tutor role globally
-    if (req.user.role !== 'tutor') {
+    if (req.user.roleName !== 'tutor') {
       return res.status(403).json({ error: 'Only tutors can generate quizzes' });
     }
 
@@ -70,7 +63,6 @@ Do not include any introductory text, markdown formatting, or explanations. Just
       questions = JSON.parse(cleanedJson);
       if (!Array.isArray(questions)) throw new Error('Not an array');
       
-      // Basic validation
       questions = questions.filter(q => q.question && Array.isArray(q.options) && q.options.length > 0 && typeof q.correct_index === 'number');
       if (questions.length === 0) throw new Error('No valid questions parsed');
     } catch (e) {
@@ -95,9 +87,6 @@ Do not include any introductory text, markdown formatting, or explanations. Just
 export const listQuizzes = async (req, res, next) => {
   try {
     const groupId = req.params.groupId;
-    const isMember = await groupModel.isMember(groupId, req.user.id);
-    if (!isMember) return res.status(403).json({ error: 'Access denied' });
-
     const quizzes = await quizModel.getQuizzesByGroup(groupId, req.user.id);
     res.json(quizzes);
   } catch (err) {
@@ -108,20 +97,21 @@ export const listQuizzes = async (req, res, next) => {
 export const getQuiz = async (req, res, next) => {
   try {
     const { groupId, quizId } = req.params;
-    const isMember = await groupModel.isMember(groupId, req.user.id);
-    if (!isMember) return res.status(403).json({ error: 'Access denied' });
-
     const quiz = await quizModel.getQuizById(quizId);
     if (!quiz || quiz.group_id !== groupId) {
       return res.status(404).json({ error: 'Quiz not found' });
     }
 
     const questions = await quizModel.getQuestionsByQuiz(quizId);
-    const attempt = await quizModel.getAttempt(quizId, req.user.id);
+    
+    if (req.user.roleName === 'tutor') {
+      const attempts = await quizModel.getAttemptsByQuiz(quizId);
+      return res.json({ quiz, questions, attempts });
+    }
 
-    // If the user hasn't attempted it and is a student, strip correct answers
+    const attempt = await quizModel.getAttempt(quizId, req.user.id);
     let returnQuestions = questions;
-    if (req.user.role === 'student' && !attempt) {
+    if (req.user.roleName === 'student' && !attempt) {
       returnQuestions = questions.map(q => {
         const { correct_index, explanation, ...rest } = q;
         return rest;
@@ -137,14 +127,11 @@ export const getQuiz = async (req, res, next) => {
 export const submitQuiz = async (req, res, next) => {
   try {
     const { groupId, quizId } = req.params;
-    const { answers } = req.body; // array of { questionId, selectedIndex }
+    const { answers } = req.body; 
 
-    if (req.user.role !== 'student') {
+    if (req.user.roleName !== 'student') {
       return res.status(403).json({ error: 'Only students can submit quizzes' });
     }
-
-    const isMember = await groupModel.isMember(groupId, req.user.id);
-    if (!isMember) return res.status(403).json({ error: 'Access denied' });
 
     const quiz = await quizModel.getQuizById(quizId);
     if (!quiz || quiz.group_id !== groupId) {
@@ -161,7 +148,6 @@ export const submitQuiz = async (req, res, next) => {
     let score = 0;
     const total = questions.length;
     
-    // Evaluate
     questions.forEach(q => {
       const studentAnswer = answers.find(a => a.questionId === q.id);
       if (studentAnswer && studentAnswer.selectedIndex === q.correct_index) {
@@ -173,10 +159,11 @@ export const submitQuiz = async (req, res, next) => {
       quizId,
       userId: req.user.id,
       score,
-      total
+      total,
+      answers
     });
 
-    res.json({ attempt, questions }); // return full questions with answers and explanations
+    res.json({ attempt, questions }); 
   } catch (err) {
     next(err);
   }

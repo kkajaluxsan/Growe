@@ -47,7 +47,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
   };
 
   return (
-    <Modal open onClose={!loading ? onClose : undefined} title="Generate AI Quiz" size="lg">
+    <Modal open onClose={!loading ? onClose : undefined} title="Start Quiz" size="lg">
       <div className="space-y-4">
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Upload a study document and our AI will automatically read it and generate a multiple-choice quiz for the group.
@@ -119,7 +119,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
                 Generating... (This may take a minute)
               </span>
             ) : (
-              'Generate Quiz'
+              'Start Quiz'
             )}
           </Button>
         </div>
