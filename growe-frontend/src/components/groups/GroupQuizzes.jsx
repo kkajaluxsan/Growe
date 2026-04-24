@@ -13,7 +13,7 @@ export default function GroupQuizzes({ groupId }) {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generatorOpen, setGeneratorOpen] = useState(false);
-  const [takeQuizId, setTakeQuizId] = useState(null);
+  const [activeQuizModal, setActiveQuizModal] = useState(null);
 
   const isTutor = user?.roleName === 'tutor';
 
@@ -69,15 +69,20 @@ export default function GroupQuizzes({ groupId }) {
                   <Button
                     size="sm"
                     variant={q.score !== null && q.score !== undefined ? 'secondary' : 'primary'}
-                    onClick={() => setTakeQuizId(q.id)}
+                    onClick={() => setActiveQuizModal({ quizId: q.id, initialView: 'preview' })}
                   >
                     {q.score !== null && q.score !== undefined ? 'View Results' : 'Take Quiz'}
                   </Button>
                 )}
                 {isTutor && (
-                  <Button size="sm" variant="secondary" onClick={() => setTakeQuizId(q.id)}>
-                    View Quiz
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setActiveQuizModal({ quizId: q.id, initialView: 'results' })}>
+                      Student Results
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setActiveQuizModal({ quizId: q.id, initialView: 'preview' })}>
+                      View Quiz
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -96,12 +101,13 @@ export default function GroupQuizzes({ groupId }) {
         />
       )}
 
-      {takeQuizId && (
+      {activeQuizModal && (
         <QuizTakeModal
           groupId={groupId}
-          quizId={takeQuizId}
+          quizId={activeQuizModal.quizId}
+          initialView={activeQuizModal.initialView}
           onClose={() => {
-            setTakeQuizId(null);
+            setActiveQuizModal(null);
             loadQuizzes();
           }}
         />

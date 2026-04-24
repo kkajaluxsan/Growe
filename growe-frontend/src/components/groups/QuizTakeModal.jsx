@@ -5,7 +5,7 @@ import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 
-export default function QuizTakeModal({ groupId, quizId, onClose }) {
+export default function QuizTakeModal({ groupId, quizId, initialView = 'results', onClose }) {
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -101,7 +101,7 @@ export default function QuizTakeModal({ groupId, quizId, onClose }) {
     <Modal open onClose={onClose} title={quiz.title} size="xl">
       <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
         
-        {isTutor && !viewingAttempt && (
+        {isTutor && !viewingAttempt && initialView === 'results' && (
           <div className="space-y-4">
             <h3 className="font-semibold text-slate-900 dark:text-slate-100">Student Results ({attempts.length})</h3>
             {attempts.length === 0 ? (
@@ -150,76 +150,78 @@ export default function QuizTakeModal({ groupId, quizId, onClose }) {
         )}
 
         {/* Quiz questions render */}
-        <div className="space-y-8 mt-6">
-          {questions.map((q, i) => {
-            const answer = answers.find(a => a.questionId === q.id);
-            const isTutorPreview = isTutor && !viewingAttempt;
-            const showAnswers = activeAttempt || isTutorPreview;
-            const isCorrect = showAnswers && q.correct_index === (isTutorPreview ? q.correct_index : answer?.selectedIndex);
-            const isWrong = activeAttempt && q.correct_index !== answer?.selectedIndex && answer?.selectedIndex !== null && answer?.selectedIndex !== undefined;
+        {(!isTutor || viewingAttempt || initialView === 'preview') && (
+          <div className="space-y-8 mt-6">
+            {questions.map((q, i) => {
+              const answer = answers.find(a => a.questionId === q.id);
+              const isTutorPreview = isTutor && !viewingAttempt;
+              const showAnswers = activeAttempt || isTutorPreview;
+              const isCorrect = showAnswers && q.correct_index === (isTutorPreview ? q.correct_index : answer?.selectedIndex);
+              const isWrong = activeAttempt && q.correct_index !== answer?.selectedIndex && answer?.selectedIndex !== null && answer?.selectedIndex !== undefined;
 
-            return (
-              <div key={q.id} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                <h4 className="font-medium text-slate-900 dark:text-slate-100 mb-3">
-                  <span className="text-slate-500 mr-2">{i + 1}.</span> {q.question}
-                </h4>
+              return (
+                <div key={q.id} className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <h4 className="font-medium text-slate-900 dark:text-slate-100 mb-3">
+                    <span className="text-slate-500 mr-2">{i + 1}.</span> {q.question}
+                  </h4>
 
-                <div className="space-y-2">
-                  {q.options.map((opt, optIdx) => {
-                    const isSelected = answer?.selectedIndex === optIdx;
-                    
-                    let optionStyle = "border-slate-300 dark:border-slate-600 hover:border-growe dark:hover:border-growe hover:bg-growe/5 cursor-pointer";
-                    
-                    if (isSelected) {
-                      optionStyle = "border-growe bg-growe/10 text-growe-dark font-medium";
-                    }
-
-                    if (showAnswers) {
-                      optionStyle = "border-slate-300 dark:border-slate-600 opacity-70 cursor-default";
-                      if (q.correct_index === optIdx) {
-                        optionStyle = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-medium";
-                      } else if (!isTutorPreview && isSelected && !isCorrect) {
-                        optionStyle = "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium line-through";
+                  <div className="space-y-2">
+                    {q.options.map((opt, optIdx) => {
+                      const isSelected = answer?.selectedIndex === optIdx;
+                      
+                      let optionStyle = "border-slate-300 dark:border-slate-600 hover:border-growe dark:hover:border-growe hover:bg-growe/5 cursor-pointer";
+                      
+                      if (isSelected) {
+                        optionStyle = "border-growe bg-growe/10 text-growe-dark font-medium";
                       }
-                    }
 
-                    return (
-                      <div
-                        key={optIdx}
-                        onClick={() => handleSelectOption(q.id, optIdx)}
-                        className={`p-3 rounded-lg border transition-colors ${optionStyle}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-5 h-5 mt-0.5 rounded-full border flex-shrink-0 flex items-center justify-center
-                            ${isSelected ? 'border-growe bg-growe' : 'border-slate-400'}
-                            ${showAnswers && q.correct_index === optIdx ? '!border-emerald-500 !bg-emerald-500' : ''}
-                            ${activeAttempt && isSelected && !isCorrect ? '!border-red-500 !bg-red-500' : ''}
-                          `}>
-                            {((isSelected && !showAnswers) || (showAnswers && q.correct_index === optIdx)) && (
-                              <div className="w-2 h-2 rounded-full bg-white"></div>
-                            )}
+                      if (showAnswers) {
+                        optionStyle = "border-slate-300 dark:border-slate-600 opacity-70 cursor-default";
+                        if (q.correct_index === optIdx) {
+                          optionStyle = "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-medium";
+                        } else if (!isTutorPreview && isSelected && !isCorrect) {
+                          optionStyle = "border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium line-through";
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={optIdx}
+                          onClick={() => handleSelectOption(q.id, optIdx)}
+                          className={`p-3 rounded-lg border transition-colors ${optionStyle}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`w-5 h-5 mt-0.5 rounded-full border flex-shrink-0 flex items-center justify-center
+                              ${isSelected ? 'border-growe bg-growe' : 'border-slate-400'}
+                              ${showAnswers && q.correct_index === optIdx ? '!border-emerald-500 !bg-emerald-500' : ''}
+                              ${activeAttempt && isSelected && !isCorrect ? '!border-red-500 !bg-red-500' : ''}
+                            `}>
+                              {((isSelected && !showAnswers) || (showAnswers && q.correct_index === optIdx)) && (
+                                <div className="w-2 h-2 rounded-full bg-white"></div>
+                              )}
+                            </div>
+                            <span>{opt}</span>
                           </div>
-                          <span>{opt}</span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {showAnswers && q.explanation && (
-                  <div className={`mt-4 p-3 rounded-lg text-sm border
-                    ${isCorrect && !isTutorPreview ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300' 
-                    : isTutorPreview ? 'bg-blue-50/50 border-blue-100 dark:bg-blue-900/10 dark:border-blue-800/50 text-blue-800 dark:text-blue-300' 
-                    : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800/50 text-amber-800 dark:text-amber-300'}`
-                  }>
-                    <strong className="font-semibold">{isCorrect && !isTutorPreview ? 'Correct! ' : 'Explanation: '}</strong>
-                    {q.explanation}
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+
+                  {showAnswers && q.explanation && (
+                    <div className={`mt-4 p-3 rounded-lg text-sm border
+                      ${isCorrect && !isTutorPreview ? 'bg-emerald-50/50 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300' 
+                      : isTutorPreview ? 'bg-blue-50/50 border-blue-100 dark:bg-blue-900/10 dark:border-blue-800/50 text-blue-800 dark:text-blue-300' 
+                      : 'bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-800/50 text-amber-800 dark:text-amber-300'}`
+                    }>
+                      <strong className="font-semibold">{isCorrect && !isTutorPreview ? 'Correct! ' : 'Explanation: '}</strong>
+                      {q.explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">

@@ -19,7 +19,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
     }
   };
 
-  const handleGenerate = async (isPreview = false) => {
+  const handleGenerate = async () => {
     if (!title.trim()) {
       return toast.error('Please enter a quiz title');
     }
@@ -38,7 +38,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Quiz generated successfully!');
-      onSuccess(isPreview ? data.quiz.id : null);
+      onSuccess();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to generate quiz');
     } finally {
@@ -112,14 +112,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button 
-            className="bg-amber-500 hover:bg-amber-600 text-white border-0" 
-            onClick={() => handleGenerate(true)} 
-            disabled={loading}
-          >
-            {loading ? '...' : 'Preview Quiz'}
-          </Button>
-          <Button variant="primary" onClick={() => handleGenerate(false)} disabled={loading}>
+          <Button variant="primary" onClick={handleGenerate} disabled={loading}>
             {loading ? (
               <span className="flex items-center gap-2">
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
