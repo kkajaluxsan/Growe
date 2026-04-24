@@ -602,60 +602,93 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
         {bookings.length === 0 ? (
           <p className="text-gray-600 dark:text-slate-400">No booking rows yet. Group tutor requests above become bookings after you accept.</p>
         ) : (
-      <table className="min-w-full">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="px-4 py-2">Student</th>
-            <th className="px-4 py-2">Time</th>
-            <th className="px-4 py-2">Status</th>
-            <th className="px-4 py-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bookings.map((b) => (
-            <tr key={b.id} className="border-b">
-              <td className="px-4 py-2">{b.student_display_name || 'Student'}</td>
-              <td className="px-4 py-2">{new Date(b.start_time).toLocaleString()}</td>
-              <td className="px-4 py-2 capitalize">
-                {b.status.replace(/_/g, ' ')}
-                {b.session_ended && b.status === 'confirmed' && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
-                    Session ended
-                  </span>
-                )}
-              </td>
-              <td className="px-4 py-2">
-                {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'confirmed')}>Confirm</Button>
-                    <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Decline</Button>
+          (() => {
+            const groupedBookingsMap = new Map();
+            const todayDate = new Date().toLocaleDateString();
+            const yesterdayDate = new Date(Date.now() - 86400000).toLocaleDateString();
+
+            bookings.forEach(b => {
+              const d = new Date(b.start_time);
+              const dString = d.toLocaleDateString();
+              let groupName = dString;
+              if (dString === todayDate) groupName = 'Today';
+              else if (dString === yesterdayDate) groupName = 'Yesterday';
+              else {
+                groupName = d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+              }
+
+              if (!groupedBookingsMap.has(groupName)) {
+                groupedBookingsMap.set(groupName, []);
+              }
+              groupedBookingsMap.get(groupName).push(b);
+            });
+
+            return (
+              <div className="space-y-8">
+                {Array.from(groupedBookingsMap.entries()).map(([dateLabel, dayBookings]) => (
+                  <div key={dateLabel}>
+                    <h3 className="text-md font-bold mb-3 text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">
+                      {dateLabel}
+                    </h3>
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-slate-500 dark:text-slate-400">
+                          <th className="px-4 py-2 font-medium">Student</th>
+                          <th className="px-4 py-2 font-medium">Time</th>
+                          <th className="px-4 py-2 font-medium">Status</th>
+                          <th className="px-4 py-2 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dayBookings.map((b) => (
+                          <tr key={b.id} className="border-b border-slate-100 dark:border-slate-700/50">
+                            <td className="px-4 py-3">{b.student_display_name || 'Student'}</td>
+                            <td className="px-4 py-3">{new Date(b.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</td>
+                            <td className="px-4 py-3 capitalize">
+                              {b.status.replace(/_/g, ' ')}
+                              {b.session_ended && b.status === 'confirmed' && (
+                                <span className="ml-2 inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-semibold uppercase tracking-wider">
+                                  Session ended
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
+                                <div className="flex flex-wrap gap-2">
+                                  <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'confirmed')}>Confirm</Button>
+                                  <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Decline</Button>
+                                </div>
+                              )}
+                              {b.status === 'confirmed' && (
+                                <div className="space-y-2">
+                                  {b.session_ended && (
+                                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                                      📋 This session has ended. Mark it as <strong>Complete</strong> so the student can rate you.
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1.5">
+                                    {isSessionLive(b) && (
+                                      <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
+                                    )}
+                                    {hasStarted(b) && (
+                                      <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
+                                        {b.session_ended ? '✓ Complete' : 'Complete'}
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                )}
-                {b.status === 'confirmed' && (
-                  <div className="space-y-2">
-                    {b.session_ended && (
-                      <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
-                        📋 This session has ended. Mark it as <strong>Complete</strong> so the student can rate you.
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5">
-                      {isSessionLive(b) && (
-                        <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
-                      )}
-                      {hasStarted(b) && (
-                        <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
-                          {b.session_ended ? '✓ Complete' : 'Complete'}
-                        </Button>
-                      )}
-                      <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
-                    </div>
-                  </div>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                ))}
+              </div>
+            );
+          })()
         )}
       </Card>
     </div>

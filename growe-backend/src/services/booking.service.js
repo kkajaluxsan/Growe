@@ -194,8 +194,19 @@ export const updateBookingStatus = async (bookingId, newStatus, actorRole) => {
     }
   }
 
-  const reliabilityScore = newStatus === 'completed' ? 1.0 : newStatus === 'no_show' ? 0 : null;
-  const updated = await bookingModel.updateStatus(bookingId, newStatus, reliabilityScore);
+  let actualStatus = newStatus;
+
+  // Auto-detect if student was a no-show for the meeting
+  if (actualStatus === 'completed' && booking.meeting_id) {
+    const meetingModel = await import('../models/meeting.model.js');
+    const participated = await meetingModel.hasUserParticipated(booking.meeting_id, booking.student_id);
+    if (!participated) {
+      actualStatus = 'no_show';
+    }
+  }
+
+  const reliabilityScore = actualStatus === 'completed' ? 1.0 : actualStatus === 'no_show' ? 0 : null;
+  const updated = await bookingModel.updateStatus(bookingId, actualStatus, reliabilityScore);
   
   if (newStatus === 'confirmed') {
     const fullBooking = await bookingModel.findById(bookingId);

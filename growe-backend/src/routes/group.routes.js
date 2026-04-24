@@ -38,8 +38,13 @@ router.post('/:id/approve/:userId', requireGroupCreator, groupController.approve
 router.post('/:id/reject/:userId', requireGroupCreator, groupController.rejectJoin);
 router.get('/:id/members', requireGroupMember, groupController.listMembers);
 
+import quizRoutes from './quiz.routes.js';
+
 router.post('/:id/invite-link', requireGroupCreator, groupController.createInviteLink);
 router.get('/:id/member-search', requireGroupCreator, groupController.searchUsersToAdd);
 router.post('/:id/members', requireGroupCreator, groupController.addMemberBySearch);
+
+// Mount Quiz routes under group
+router.use('/:groupId/quizzes', quizRoutes);
 
 export default router;
