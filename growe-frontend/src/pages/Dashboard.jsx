@@ -5,11 +5,12 @@ import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import PageHeader from '../components/ui/PageHeader';
+import LeaderboardWidget from '../components/ui/LeaderboardWidget';
 import { useToast } from '../context/ToastContext';
 import { useSocket } from '../context/SocketContext';
 
 const ONBOARDING_KEY = 'growe_onboarding_seen';
-const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
+const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || 'growelearnning@gmail.com').trim();
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function Icon({ name, className = 'h-5 w-5' }) {
@@ -188,7 +189,7 @@ export default function Dashboard() {
             ts: new Date(b.start_time).getTime(),
             dayKey: toDayKey(b.start_time),
             title: b.subject || 'Tutoring session',
-            subtitle: b.tutor_display_name || b.tutor_email || 'Tutor session',
+            subtitle: b.tutor_display_name || 'Tutor session',
             when: b.start_time,
             to: '/tutors',
             type: 'Booking',
@@ -270,7 +271,7 @@ export default function Dashboard() {
       { to: '/admin', title: 'Admin Console', desc: 'Users, verification, and metrics', icon: 'shield' },
       { to: '/assignments', title: 'Assignments', desc: 'Review assignment lifecycle', icon: 'book' },
       { to: '/messages', title: 'Messages', desc: 'Respond to platform conversations', icon: 'chat' },
-      { to: '/ai-assistant', title: 'AI Assistant', desc: 'Campus AI tools', icon: 'spark' },
+      { to: '/ai-assistant', title: 'Growe Assistant', desc: 'Campus AI tools', icon: 'spark' },
     ]
     : [
       { to: '/groups', title: 'Student Groups', desc: 'Create and join collaborative groups', icon: 'users' },
@@ -349,11 +350,14 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card>
-            <h2 className="ui-section-title mb-4">Academic Calendar</h2>
-            <MiniAcademicCalendar highlightedDays={highlightDays} />
-            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Highlighted dates include meetings, bookings, and deadlines.</p>
-          </Card>
+          <div className="space-y-4 md:space-y-6">
+            <LeaderboardWidget />
+            <Card>
+              <h2 className="ui-section-title mb-4">Academic Calendar</h2>
+              <MiniAcademicCalendar highlightedDays={highlightDays} />
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Highlighted dates include meetings, bookings, and deadlines.</p>
+            </Card>
+          </div>
         </div>
       )}
     </div>

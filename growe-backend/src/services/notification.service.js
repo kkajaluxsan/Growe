@@ -144,7 +144,7 @@ export async function notifyBookingCreated(booking) {
   const tplStudent = templates.bookingConfirmationTemplate({
     userName: student?.display_name || student?.email,
     role: 'student',
-    otherPartyEmail: tutor?.email,
+    otherPartyEmail: tutor?.display_name || tutor?.email,
     startFormatted,
     status: 'pending',
   });
@@ -161,7 +161,7 @@ export async function notifyBookingCreated(booking) {
   const tplTutor = templates.bookingConfirmationTemplate({
     userName: tutor?.display_name || tutor?.email,
     role: 'tutor',
-    otherPartyEmail: student?.email,
+    otherPartyEmail: student?.display_name || student?.email,
     startFormatted,
     status: 'pending',
   });
@@ -169,7 +169,7 @@ export async function notifyBookingCreated(booking) {
     userId: booking.tutor_user_id,
     type: TYPES.BOOKING,
     title: 'New booking request',
-    message: `${student?.email} — ${startFormatted}`,
+    message: `${student?.display_name || student?.email} — ${startFormatted}`,
     metadata: { bookingId: booking.id },
     email: tutor?.email,
     emailPayload: { subject: tplTutor.subject, html: tplTutor.html, text: tplTutor.text },
@@ -186,7 +186,7 @@ export async function notifyBookingStatusChanged(booking, newStatus) {
     const t = templates.bookingConfirmationTemplate({
       userName: role === 'student' ? student?.display_name || student?.email : tutor?.display_name || tutor?.email,
       role,
-      otherPartyEmail: role === 'student' ? tutor?.email : student?.email,
+      otherPartyEmail: role === 'student' ? (tutor?.display_name || tutor?.email) : (student?.display_name || student?.email),
       startFormatted,
       status: newStatus,
     });
@@ -331,6 +331,8 @@ export async function notifyGroupInviteLinkCreated({ creatorUserId, groupName, i
 export async function notifyBookingReminderInApp({ userId, email, startTime, tutorEmail }) {
   const start = new Date(startTime);
   const formatted = start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const tutor = tutorEmail ? await userModel.findByEmail(tutorEmail) : null;
+  const tutorName = tutor?.display_name || tutorEmail;
   const { subject, html, text } = templates.bookingSessionReminderTemplate({
     startFormatted: formatted,
     tutorEmail,
@@ -339,7 +341,7 @@ export async function notifyBookingReminderInApp({ userId, email, startTime, tut
     userId,
     type: TYPES.BOOKING,
     title: 'Session reminder',
-    message: `Your session is at ${formatted}` + (tutorEmail ? ` — Tutor: ${tutorEmail}` : ''),
+    message: `Your session is at ${formatted}` + (tutorName ? ` — Tutor: ${tutorName}` : ''),
     metadata: { event: 'booking_reminder' },
     email,
     emailPayload: { subject, html, text },
@@ -349,6 +351,8 @@ export async function notifyBookingReminderInApp({ userId, email, startTime, tut
 export async function notifyTutorBookingReminderInApp({ tutorUserId, email, startTime, studentEmail }) {
   const start = new Date(startTime);
   const formatted = start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const student = studentEmail ? await userModel.findByEmail(studentEmail) : null;
+  const studentName = student?.display_name || studentEmail;
   const { subject, html, text } = templates.tutorSessionReminderTemplate({
     startFormatted: formatted,
     studentEmail,
@@ -357,7 +361,7 @@ export async function notifyTutorBookingReminderInApp({ tutorUserId, email, star
     userId: tutorUserId,
     type: TYPES.BOOKING,
     title: 'Session reminder',
-    message: `You tutor at ${formatted}` + (studentEmail ? ` — Student: ${studentEmail}` : ''),
+    message: `You tutor at ${formatted}` + (studentName ? ` — Student: ${studentName}` : ''),
     metadata: { event: 'booking_reminder_tutor' },
     email,
     emailPayload: { subject, html, text },
@@ -368,7 +372,9 @@ export async function notifyTutorBookingReminderInApp({ tutorUserId, email, star
 export async function notifyBookingImminentInApp({ userId, startTime, role, otherPartyEmail, bookingId }) {
   const start = new Date(startTime);
   const formatted = start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  const who = role === 'tutor' ? `Student: ${otherPartyEmail}` : `Tutor: ${otherPartyEmail}`;
+  const otherParty = otherPartyEmail ? await userModel.findByEmail(otherPartyEmail) : null;
+  const otherName = otherParty?.display_name || otherPartyEmail;
+  const who = role === 'tutor' ? `Student: ${otherName}` : `Tutor: ${otherName}`;
   return createNotification({
     userId,
     type: TYPES.BOOKING,
@@ -380,25 +386,41 @@ export async function notifyBookingImminentInApp({ userId, startTime, role, othe
 
 /** Prompt the student to rate their tutor after a booking is completed. */
 export async function notifyRatingPrompt({ studentUserId, tutorEmail, bookingId }) {
+  const tutor = tutorEmail ? await userModel.findByEmail(tutorEmail) : null;
+  const tutorName = tutor?.display_name || tutorEmail;
   return createNotification({
     userId: studentUserId,
     type: TYPES.BOOKING,
     title: 'Rate your tutor',
-    message: `Your session with ${tutorEmail || 'your tutor'} is complete. Tap to rate your experience!`,
+    message: `Your session with ${tutorName || 'your tutor'} is complete. Tap to rate your experience!`,
     metadata: { event: 'rating_prompt', bookingId },
   });
 }
 
 /** Notify the tutor when a student submits a rating. */
 export async function notifyNewTutorRating({ tutorUserId, studentEmail, rating }) {
+  const student = studentEmail ? await userModel.findByEmail(studentEmail) : null;
+  const studentName = student?.display_name || studentEmail;
   const stars = '⭐'.repeat(rating);
   return createNotification({
     userId: tutorUserId,
     type: TYPES.BOOKING,
     title: 'New rating received',
-    message: `${studentEmail || 'A student'} rated you ${stars} (${rating}/5)`,
+    message: `${studentName || 'A student'} rated you ${stars} (${rating}/5)`,
     metadata: { event: 'new_rating', rating },
   });
+}
+
+export async function notifyAccountRemovedEmail({ email, name }) {
+  if (!email || !isSmtpConfigured()) return;
+  const { subject, html, text } = templates.accountRemovedTemplate({ userName: name });
+  
+  try {
+    const { ok } = await sendMailWithRetry({ to: email, subject, html, text });
+    if (!ok) logger.warn('account_removed_email_failed', { email });
+  } catch (err) {
+    logger.warn('account_removed_email_error', { err: err.message, email });
+  }
 }
 
 export { TYPES };

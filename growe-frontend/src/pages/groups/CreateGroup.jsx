@@ -186,12 +186,7 @@ export default function CreateGroup() {
             />
           </div>
           <div>
-            <label
-              htmlFor="session-subject"
-              className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
-            >
-              Subject / focus (optional)
-            </label>
+
             <Input
               id="session-subject"
               type="text"

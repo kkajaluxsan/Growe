@@ -1,11 +1,11 @@
 import { query } from '../config/db.js';
 
-export const create = async ({ groupId, title, createdBy, scheduledAt = null, tutorId = null }) => {
+export const create = async ({ groupId, title, createdBy, scheduledAt = null, tutorId = null, bookingId = null }) => {
   const { rows } = await query(
-    `INSERT INTO meetings (group_id, title, created_by, scheduled_at, tutor_id)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, group_id, title, started_at, ended_at, created_by, created_at, updated_at, scheduled_at, tutor_id`,
-    [groupId, title || 'Group Meeting', createdBy, scheduledAt, tutorId]
+    `INSERT INTO meetings (group_id, title, created_by, scheduled_at, tutor_id, booking_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, group_id, title, started_at, ended_at, created_by, created_at, updated_at, scheduled_at, tutor_id, booking_id`,
+    [groupId || null, title || 'Meeting', createdBy, scheduledAt, tutorId, bookingId || null]
   );
   return rows[0];
 };
@@ -13,12 +13,16 @@ export const create = async ({ groupId, title, createdBy, scheduledAt = null, tu
 export const findById = async (id) => {
   const { rows } = await query(
     `SELECT m.id, m.group_id, m.title, m.started_at, m.ended_at, m.created_by,
-            m.created_at, m.updated_at, m.scheduled_at, m.tutor_id, sg.name as group_name,
-            u.email as tutor_email
+            m.created_at, m.updated_at, m.scheduled_at, m.tutor_id, m.booking_id,
+            sg.name as group_name,
+            u.id as tutor_user_id,
+            u.email as tutor_email,
+            b.student_id as booking_student_id
      FROM meetings m
-     JOIN study_groups sg ON m.group_id = sg.id
+     LEFT JOIN study_groups sg ON m.group_id = sg.id
      LEFT JOIN tutor_profiles tp ON m.tutor_id = tp.id
      LEFT JOIN users u ON tp.user_id = u.id
+     LEFT JOIN bookings b ON m.booking_id = b.id
      WHERE m.id = $1`,
     [id]
   );

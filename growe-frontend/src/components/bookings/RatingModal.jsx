@@ -56,8 +56,8 @@ export default function RatingModal({ open, onClose, booking, onSubmitted }) {
     try {
       const api = (await import('../../services/api')).default;
       await api.post(`/bookings/${booking.id}/rate`, {
-        rating,
-        comment: comment.trim() || undefined,
+        rating: Number(rating),
+        comment: comment.trim() || null,
       });
       onSubmitted?.();
       onClose();
@@ -70,7 +70,7 @@ export default function RatingModal({ open, onClose, booking, onSubmitted }) {
     }
   };
 
-  const tutorLabel = booking?.tutor_email || booking?.tutorEmail || 'your tutor';
+  const tutorLabel = booking?.tutor_display_name || 'your tutor';
   const sessionDate = booking?.start_time
     ? new Date(booking.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : '';

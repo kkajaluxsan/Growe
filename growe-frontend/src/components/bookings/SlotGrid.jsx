@@ -27,29 +27,13 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
     const blocksArr = Array.from(availByKey.keys())
       .map((k) => {
         const [start, end] = k.split('__');
-        return { key: k, start, end, tutorCount: keyToTutors.get(k)?.size || 0 };
+        const slotsForBlock = availByKey.get(k) || [];
+        const availableSlots = slotsForBlock.filter(s => !s.isBooked);
+        const uniqueTutors = new Set(availableSlots.map(s => s.tutorId || s.tutorEmail || 'tutor')).size;
+        const isPending = slotsForBlock.some(s => s.isPending);
+        return { key: k, start, end, tutorCount: uniqueTutors, isPending };
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-
-    // Make it feel like a theatre grid: include missing time blocks based on observed interval
-    if (blocksArr.length >= 2) {
-      const starts = blocksArr.map((b) => new Date(b.start).getTime()).sort((a, b) => a - b);
-      const deltas = [];
-      for (let i = 1; i < starts.length; i += 1) deltas.push(starts[i] - starts[i - 1]);
-      const step = deltas.sort((a, b) => a - b)[0] || 60 * 60 * 1000;
-      const min = starts[0];
-      const max = starts[starts.length - 1];
-      for (let t = min; t <= max; t += step) {
-        const start = new Date(t).toISOString();
-        const end = new Date(t + step).toISOString();
-        const k = getKey(start, end);
-        if (!availByKey.has(k)) {
-          availByKey.set(k, []);
-          blocksArr.push({ key: k, start, end, tutorCount: 0, synthetic: true });
-        }
-      }
-      blocksArr.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-    }
 
     return { blocks: blocksArr, availabilityByBlock: availByKey };
   }, [slots]);
@@ -57,15 +41,20 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {blocks.map((b) => {
-        const available = (availabilityByBlock.get(b.key) || []).length > 0;
-        const state = b.key === selectedKey ? 'selected' : available ? 'available' : 'booked';
+        const available = b.tutorCount > 0;
+        const isActuallySelected = b.key === selectedKey;
+        const state = isActuallySelected || b.isPending ? 'selected' : available ? 'available' : 'booked';
+        
+        let sublabel = available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'Booked';
+        if (b.isPending) sublabel = 'Requested';
+
         return (
           <SlotCard
             key={b.key}
             state={state}
             label={formatTimeRange(b.start, b.end)}
-            sublabel={available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'No tutors available'}
-            onClick={() => onSelectKey?.(b.key)}
+            sublabel={sublabel}
+            onClick={() => available && onSelectKey?.(b.key)}
           />
         );
       })}

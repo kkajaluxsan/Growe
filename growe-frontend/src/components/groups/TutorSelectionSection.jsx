@@ -56,12 +56,14 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
     }
     setSlotsLoading(true);
     api
-      .get('/tutors/slots', { params: { fromDate: sessionDate, toDate: sessionDate }, skipGlobalErrorToast: true })
+      .get('/tutors/slots', { params: { fromDate: sessionDate, toDate: sessionDate, duration: 60 }, skipGlobalErrorToast: true })
       .then(({ data }) => {
         const raw = Array.isArray(data) ? data : [];
+        const now = Date.now() - 15 * 60 * 1000;
         const seen = new Set();
         const unique = [];
         raw.forEach((s) => {
+          if (new Date(s.start).getTime() < now) return;
           const key = `${s.start}|${s.end}`;
           if (!seen.has(key)) {
             seen.add(key);

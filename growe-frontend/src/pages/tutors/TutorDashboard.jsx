@@ -18,7 +18,13 @@ export default function TutorDashboard() {
   const [availability, setAvailability] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    return sessionStorage.getItem('growe_tutor_dashboard_tab') || 'profile';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('growe_tutor_dashboard_tab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -141,24 +147,34 @@ export default function TutorDashboard() {
         </button>
       </div>
 
-      {activeTab === 'profile' && (
-        <TutorProfileSection profile={profile} onSaved={loadProfile} />
-      )}
-      {activeTab === 'availability' && (
-        <TutorAvailabilitySection availability={availability} onUpdate={loadAvailability} />
-      )}
-      {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
-      {activeTab === 'bookings' && (
-        <TutorBookingsSection
-          bookings={bookings}
-          onUpdate={loadBookings}
-          onAfterGroupInviteAccept={() => {
-            loadBookings();
-            setActiveTab('schedule');
-          }}
-        />
-      )}
-      {activeTab === 'ratings' && <TutorRatingsSection />}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div className="lg:col-span-2 space-y-6">
+          {activeTab === 'profile' && (
+            <TutorProfileSection profile={profile} onSaved={loadProfile} />
+          )}
+          {activeTab === 'availability' && (
+            <TutorAvailabilitySection availability={availability} onUpdate={loadAvailability} />
+          )}
+          {activeTab === 'schedule' && <TutorBookingCalendar bookings={bookings} />}
+          {activeTab === 'bookings' && (
+            <TutorBookingsSection
+              bookings={bookings}
+              onUpdate={loadBookings}
+              onAfterGroupInviteAccept={() => {
+                loadBookings();
+                setActiveTab('schedule');
+              }}
+            />
+          )}
+          {activeTab === 'ratings' && <TutorRatingsSection />}
+        </div>
+        
+        <div className="lg:col-span-1 relative">
+          <div className="sticky top-24">
+            <MiniCalendarWidget bookings={bookings} availability={availability} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -166,12 +182,16 @@ export default function TutorDashboard() {
 function TutorProfileSection({ profile, onSaved }) {
   const [bio, setBio] = useState(profile?.bio || '');
   const [subjects, setSubjects] = useState(profile?.subjects?.join(', ') || '');
+  const [yearsExperience, setYearsExperience] = useState(profile?.years_experience || 0);
+  const [experienceDetails, setExperienceDetails] = useState(profile?.experience_details || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setBio(profile?.bio || '');
     setSubjects(profile?.subjects?.join(', ') || '');
+    setYearsExperience(profile?.years_experience || 0);
+    setExperienceDetails(profile?.experience_details || '');
   }, [profile]);
 
   const handleSubmit = async (e) => {
@@ -179,12 +199,19 @@ function TutorProfileSection({ profile, onSaved }) {
     setError('');
     setSaving(true);
     const subjectsArray = subjects.split(',').map((s) => s.trim()).filter(Boolean);
+    const payload = {
+      bio,
+      subjects: subjectsArray,
+      yearsExperience: Number(yearsExperience),
+      experienceDetails
+    };
+
     try {
       if (profile) {
-        await api.patch('/tutors/profile', { bio, subjects: subjectsArray });
+        await api.patch('/tutors/profile', payload);
         alert('Profile updated');
       } else {
-        await api.post('/tutors/profile', { bio, subjects: subjectsArray });
+        await api.post('/tutors/profile', payload);
         alert('Profile created');
       }
       onSaved();
@@ -196,7 +223,7 @@ function TutorProfileSection({ profile, onSaved }) {
   };
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="w-full">
       <h2 className="text-lg font-semibold mb-4">Tutor Profile</h2>
       {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
       <form onSubmit={handleSubmit}>
@@ -206,8 +233,8 @@ function TutorProfileSection({ profile, onSaved }) {
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             className="w-full border rounded py-2 px-3"
-            rows={4}
-            placeholder="Tell students about your teaching experience..."
+            rows={3}
+            placeholder="Tell students about yourself..."
           />
         </div>
         <div className="mb-4">
@@ -220,6 +247,29 @@ function TutorProfileSection({ profile, onSaved }) {
             placeholder="e.g. Math, Physics, Chemistry"
           />
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div className="md:col-span-1">
+            <label className="block text-sm font-medium mb-1">Years of Experience</label>
+            <input
+              type="number"
+              min="0"
+              value={yearsExperience}
+              onChange={(e) => setYearsExperience(e.target.value)}
+              className="w-full border rounded py-2 px-3"
+              placeholder="e.g. 5"
+            />
+          </div>
+          <div className="md:col-span-3">
+            <label className="block text-sm font-medium mb-1">Experience Details (Where you worked)</label>
+            <textarea
+              value={experienceDetails}
+              onChange={(e) => setExperienceDetails(e.target.value)}
+              className="w-full border rounded py-2 px-3"
+              rows={2}
+              placeholder="e.g. Former Math Teacher at Example High School, 3 years online tutoring..."
+            />
+          </div>
+        </div>
         <Button type="submit" disabled={saving} loading={saving}>
           {saving ? 'Saving...' : profile ? 'Update Profile' : 'Create Profile'}
         </Button>
@@ -229,79 +279,86 @@ function TutorProfileSection({ profile, onSaved }) {
 }
 
 function TutorAvailabilitySection({ availability, onUpdate }) {
+  const { toast } = useToast();
   const [adding, setAdding] = useState(false);
   const [availableDate, setAvailableDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [sessionDuration, setSessionDuration] = useState(60);
-  const [durationMode, setDurationMode] = useState('preset');
-  const [presetDuration, setPresetDuration] = useState(60);
   const [maxStudentsPerSlot, setMaxStudentsPerSlot] = useState(1);
-  const [error, setError] = useState('');
   const [editingId, setEditingId] = useState('');
   const [editForm, setEditForm] = useState({
     availableDate: '',
     startTime: '09:00',
     endTime: '17:00',
-    durationMode: 'preset',
-    presetDuration: 60,
-    sessionDuration: 60,
     maxStudentsPerSlot: 1,
   });
 
+  const todayStr = localDateInputMin();
+  const now = new Date();
+  const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
   const handleAdd = async (e) => {
     e.preventDefault();
-    setError('');
+    
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    if (endH < startH || (endH === startH && endM <= startM)) {
+      toast.warning('Change time and end time must be after start time');
+      return;
+    }
+
     setAdding(true);
     try {
       await api.post('/tutors/availability', {
         availableDate,
         startTime: startTime + ':00',
         endTime: endTime + ':00',
-        sessionDuration: durationMode === 'custom' ? sessionDuration : presetDuration,
+        sessionDuration: 60,
         maxStudentsPerSlot,
       });
       setAvailableDate('');
       onUpdate();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.details?.join(', ') || 'Failed');
+      toast.error(err.response?.data?.error || err.response?.data?.details?.join(', ') || 'Failed');
     } finally {
       setAdding(false);
     }
   };
 
   const beginEdit = (slot) => {
-    const currentDuration = Number(slot.session_duration) || 60;
-    const preset = [30, 45, 60, 90].includes(currentDuration) ? currentDuration : 60;
-    const mode = [30, 45, 60, 90].includes(currentDuration) ? 'preset' : 'custom';
     setEditingId(String(slot.id));
     setEditForm({
       availableDate: slot.available_date,
       startTime: slot.start_time?.slice(0, 5) || '09:00',
       endTime: slot.end_time?.slice(0, 5) || '17:00',
-      durationMode: mode,
-      presetDuration: preset,
-      sessionDuration: currentDuration,
       maxStudentsPerSlot: Number(slot.max_students_per_slot) || 1,
     });
   };
 
   const saveEdit = async (id) => {
+    if (editForm.availableDate === todayStr && editForm.startTime < currentTimeStr) {
+      toast.warning('Start time cannot be in the past for today');
+      return;
+    }
+    const [startH, startM] = editForm.startTime.split(':').map(Number);
+    const [endH, endM] = editForm.endTime.split(':').map(Number);
+    if (endH < startH || (endH === startH && endM <= startM)) {
+      toast.warning('Change time and end time must be after start time');
+      return;
+    }
+
     try {
       await api.patch(`/tutors/availability/${id}`, {
         availableDate: editForm.availableDate,
         startTime: `${editForm.startTime}:00`,
         endTime: `${editForm.endTime}:00`,
-        sessionDuration:
-          editForm.durationMode === 'custom'
-            ? Number(editForm.sessionDuration)
-            : Number(editForm.presetDuration),
+        sessionDuration: 60,
         maxStudentsPerSlot: Number(editForm.maxStudentsPerSlot) || 1,
       });
       setEditingId('');
       onUpdate();
     } catch (err) {
-      alert(err.response?.data?.error || err.response?.data?.details?.[0] || 'Failed to update availability');
+      toast.error(err.response?.data?.error || err.response?.data?.details?.[0] || 'Failed to update availability');
     }
   };
 
@@ -311,15 +368,45 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
       await api.delete(`/tutors/availability/${id}`);
       onUpdate();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || 'Failed');
     }
   };
 
+  const effectiveDuration = 60;
+  const windowMinutes = (() => {
+    if (!startTime || !endTime) return 0;
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    return (eH * 60 + eM) - (sH * 60 + sM);
+  })();
+  const durationExceedsWindow = effectiveDuration > windowMinutes && windowMinutes > 0;
+
+  const estimatedSlots = (() => {
+    if (!startTime || !endTime || windowMinutes <= 0 || effectiveDuration <= 0 || effectiveDuration > windowMinutes) return 0;
+    const GRID = 30;
+    const [sH, sM] = startTime.split(':').map(Number);
+    const startMin = sH * 60 + sM;
+    const endMin = startMin + windowMinutes;
+    const firstGrid = Math.ceil(startMin / GRID) * GRID;
+    const starts = new Set();
+    if (startMin + effectiveDuration <= endMin) starts.add(startMin);
+    for (let g = firstGrid; g + effectiveDuration <= endMin; g += GRID) starts.add(g);
+    return starts.size;
+  })();
+
+  const isTimeValid = (() => {
+    if (!availableDate) return false;
+    if (availableDate === todayStr && startTime < currentTimeStr) return false;
+    if (durationExceedsWindow) return false;
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    return eH > sH || (eH === sH && eM > sM);
+  })();
+
   return (
     <div className="space-y-6">
-      <Card className="max-w-xl">
+      <Card className="w-full">
         <h2 className="text-lg font-semibold mb-4">Add Availability</h2>
-        {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
         <form onSubmit={handleAdd} className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>
@@ -337,6 +424,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
             <input
               type="time"
               value={startTime}
+              min={availableDate === todayStr ? currentTimeStr : undefined}
               onChange={(e) => setStartTime(e.target.value)}
               className="border rounded py-2 px-3"
             />
@@ -351,43 +439,6 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Duration (min)</label>
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {[30, 45, 60, 90].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      setDurationMode('preset');
-                      setPresetDuration(d);
-                    }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'preset' && presetDuration === d ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                  >
-                    {d === 60 ? '1 hour' : `${d} min`}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setDurationMode('custom')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'custom' ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                >
-                  Custom
-                </button>
-              </div>
-              {durationMode === 'custom' && (
-                <input
-                  type="number"
-                  min={15}
-                  max={480}
-                  value={sessionDuration}
-                  onChange={(e) => setSessionDuration(parseInt(e.target.value, 10) || 15)}
-                  className="border rounded py-2 px-3 w-24"
-                />
-              )}
-            </div>
-          </div>
-          <div>
             <label className="block text-sm font-medium mb-1">Max per slot</label>
             <input
               type="number"
@@ -398,10 +449,20 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
               className="border rounded py-2 px-3 w-20"
             />
           </div>
-          <Button type="submit" disabled={adding} loading={adding}>
+          <Button type="submit" disabled={adding || !isTimeValid} loading={adding}>
             {adding ? 'Adding...' : 'Add'}
           </Button>
         </form>
+        {durationExceedsWindow && (
+          <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            ⚠️ Session duration ({effectiveDuration} min) exceeds the availability window ({windowMinutes} min). Reduce the duration or widen the time window.
+          </div>
+        )}
+        {!durationExceedsWindow && estimatedSlots > 0 && availableDate && (
+          <div className="mt-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-sm">
+            ✓ Creates <strong>{estimatedSlots}</strong> bookable slot{estimatedSlots !== 1 ? 's' : ''} ({effectiveDuration} min each) on a 30-min grid
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -414,18 +475,14 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
               <li key={a.id} className="py-2 border-b">
                 {editingId === String(a.id) ? (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <input type="date" value={editForm.availableDate} min={localDateInputMin()} onChange={(e) => setEditForm((p) => ({ ...p, availableDate: e.target.value }))} className="border rounded py-2 px-3" />
-                      <input type="time" value={editForm.startTime} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="border rounded py-2 px-3" />
+                      <input type="time" value={editForm.startTime} min={editForm.availableDate === todayStr ? currentTimeStr : undefined} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="border rounded py-2 px-3" />
                       <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))} className="border rounded py-2 px-3" />
-                      <input type="number" min={15} max={480} value={editForm.durationMode === 'custom' ? editForm.sessionDuration : editForm.presetDuration} onChange={(e) => {
-                        const n = parseInt(e.target.value, 10) || 15;
-                        setEditForm((p) => p.durationMode === 'custom' ? { ...p, sessionDuration: n } : { ...p, presetDuration: n });
-                      }} className="border rounded py-2 px-3" />
                       <input type="number" min={1} max={20} value={editForm.maxStudentsPerSlot} onChange={(e) => setEditForm((p) => ({ ...p, maxStudentsPerSlot: parseInt(e.target.value, 10) || 1 }))} className="border rounded py-2 px-3" />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>
+                      <Button size="sm" disabled={editForm.availableDate === todayStr && editForm.startTime < currentTimeStr} onClick={() => saveEdit(a.id)}>Save</Button>
                       <Button size="sm" variant="secondary" onClick={() => setEditingId('')}>Cancel</Button>
                     </div>
                   </div>
@@ -516,26 +573,10 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
   };
 
   const openSessionChat = async (booking) => {
-    const otherUserId = booking?.student_id;
-    if (!otherUserId) {
-      toast.error('Student info is missing for this booking.');
-      return;
-    }
-    try {
-      const { data } = await api.post(`/conversations/direct/${otherUserId}`);
-      navigate('/messages', {
-        state: {
-          conversation: data,
-          callSession: {
-            conversationId: data.id,
-            bookingId: booking.id,
-            callerRole: 'tutor',
-          },
-        },
-      });
-      toast.success('Session chat opened. Use voice/video buttons to start the meeting.');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not open session chat');
+    if (booking.meeting_id) {
+      navigate(`/meetings/${booking.meeting_id}`);
+    } else {
+      toast.error('Meeting room is not available for this session yet.');
     }
   };
 
@@ -573,9 +614,16 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
         <tbody>
           {bookings.map((b) => (
             <tr key={b.id} className="border-b">
-              <td className="px-4 py-2">{b.student_email}</td>
+              <td className="px-4 py-2">{b.student_display_name || 'Student'}</td>
               <td className="px-4 py-2">{new Date(b.start_time).toLocaleString()}</td>
-              <td className="px-4 py-2 capitalize">{b.status}</td>
+              <td className="px-4 py-2 capitalize">
+                {b.status.replace(/_/g, ' ')}
+                {b.session_ended && b.status === 'confirmed' && (
+                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                    Session ended
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-2">
                 {['pending', 'waiting_tutor_confirmation'].includes(b.status) && (
                   <div className="flex flex-wrap gap-2">
@@ -584,17 +632,23 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
                   </div>
                 )}
                 {b.status === 'confirmed' && (
-                  <div className="flex flex-wrap gap-2">
-                    {isSessionLive(b) && (
-                      <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
-                    )}
-                    {hasStarted(b) && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>Complete</Button>
-                        <Button size="sm" variant="warning" onClick={() => handleStatus(b.id, 'no_show')}>No-Show</Button>
+                  <div className="space-y-2">
+                    {b.session_ended && (
+                      <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                        📋 This session has ended. Mark it as <strong>Complete</strong> so the student can rate you.
                       </div>
                     )}
-                    <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
+                    <div className="flex items-center gap-1.5">
+                      {isSessionLive(b) && (
+                        <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
+                      )}
+                      {hasStarted(b) && (
+                        <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
+                          {b.session_ended ? '✓ Complete' : 'Complete'}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
+                    </div>
                   </div>
                 )}
               </td>
@@ -637,8 +691,8 @@ function TutorRatingsSection() {
               {count > 0 ? average.toFixed(1) : '—'}
             </div>
             <div className="text-amber-500 text-2xl mt-1">
-              {'★'.repeat(roundedAvg)}
-              <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - roundedAvg))}</span>
+              {'★'.repeat(Math.max(0, Math.min(5, roundedAvg)))}
+              <span className="text-slate-300 dark:text-slate-600">{'★'.repeat(Math.max(0, 5 - Math.max(0, Math.min(5, roundedAvg))))}</span>
             </div>
             <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {count} {count === 1 ? 'review' : 'reviews'}
@@ -684,7 +738,7 @@ function TutorRatingsSection() {
                   <div className="flex items-center gap-2">
                     <span className="text-amber-500 text-sm">{'★'.repeat(r.rating)}<span className="text-slate-300 dark:text-slate-600">{'★'.repeat(5 - r.rating)}</span></span>
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {r.student_display_name || r.student_email || 'Student'}
+                      {r.student_display_name || r.student_email || 'Anonymous Student'}
                     </span>
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -699,6 +753,109 @@ function TutorRatingsSection() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function MiniCalendarWidget({ bookings = [], availability = [] }) {
+  const [date, setDate] = useState(new Date());
+
+  useEffect(() => {
+    // Keep date updated passing midnight
+    const timer = setInterval(() => setDate(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const today = date.getDate();
+  const currentMonth = date.toLocaleString('default', { month: 'long' });
+  const currentYear = date.getFullYear();
+  const daysInMonth = new Date(currentYear, date.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, date.getMonth(), 1).getDay();
+
+  const daysLine = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-400 via-emerald-500 to-green-600 p-1 rounded-3xl shadow-2xl hover:shadow-[0_20px_50px_rgba(16,185,129,0.4)] transition-shadow duration-500">
+      <div className="bg-white/95 dark:bg-slate-900/95 rounded-[22px] p-6 h-full backdrop-blur-xl">
+        <div className="flex justify-between items-start mb-8 tracking-tight">
+          <div>
+            <h3 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-emerald-400">
+              {currentMonth}
+            </h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">{currentYear}</p>
+          </div>
+          <div className="w-14 h-14 flex flex-col items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-inner border border-emerald-100 dark:border-emerald-500/20 transform rotate-3">
+            <span className="text-xs font-bold uppercase tracking-widest opacity-80">{date.toLocaleString('default', { weekday: 'short' })}</span>
+            <span className="text-2xl font-black leading-none">{today}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center mb-3">
+          {daysLine.map(d => (
+            <div key={d} className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{d}</div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-7 gap-y-2 gap-x-1">
+          {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+            <div key={`empty-${i}`} className="h-10"></div>
+          ))}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const d = i + 1;
+            const isToday = d === today;
+            
+            // Check if there are bookings or availability on this specific day
+            const exactDateStr = `${currentYear}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const todaysBookings = bookings.filter(b => b.start_time?.startsWith(exactDateStr));
+            const hasActivity = todaysBookings.length > 0;
+            const todaysAvailability = availability.filter(a => a.available_date === exactDateStr);
+            const hasAvailability = todaysAvailability.length > 0;
+
+            let tooltip = 'No events';
+            if (hasActivity || hasAvailability) {
+              const lines = [];
+              todaysBookings.forEach(b => {
+                 const start = new Date(b.start_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+                 const end = new Date(b.end_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+                 lines.push(`• Booking: ${start} - ${end} (${b.status})`);
+              });
+              todaysAvailability.forEach(a => {
+                 const start = a.start_time?.slice(0, 5) || '';
+                 const end = a.end_time?.slice(0, 5) || '';
+                 lines.push(`• Available: ${start} - ${end}`);
+              });
+              tooltip = lines.join('\n');
+            }
+
+            return (
+              <div
+                key={d}
+                title={tooltip}
+                className={`group relative h-10 flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-300 ${
+                  isToday 
+                  ? 'bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white font-bold shadow-lg z-10' 
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-slate-800 font-medium cursor-default'
+                }`}
+              >
+                <span className={isToday ? "drop-shadow-md" : ""}>{d}</span>
+                <div className="absolute bottom-1 flex gap-[2px]">
+                  {hasAvailability && !isToday && <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>}
+                  {hasActivity && <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-white' : 'bg-emerald-500'}`}></div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <div className="mt-8 p-4 rounded-2xl bg-emerald-50/50 dark:bg-slate-800/50 border border-emerald-100/50 dark:border-slate-700">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-3">
+            <span className="relative flex text-xl animate-bounce">
+              😊
+            </span>
+            <span>Have a nice day!</span>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

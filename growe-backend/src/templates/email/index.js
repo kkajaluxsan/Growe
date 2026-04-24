@@ -149,6 +149,21 @@ export function passwordResetTemplate({ resetUrl, expiresIn = '1 hour' }) {
   };
 }
 
+export function accountRemovedTemplate({ userName }) {
+  const name = userName || 'there';
+  const inner = `
+    <h2>Your GROWE account has been removed</h2>
+    <p>Hi ${escapeHtml(name)},</p>
+    <p>We are writing to inform you that your account on GROWE has been removed by an administrator.</p>
+    <p>If you believe this was done in error or if you have any questions, please reply to this email or contact our support team.</p>
+    <div class="footer"><p>GROWE Administration</p></div>`;
+  return {
+    subject: 'Your GROWE account has been removed',
+    html: baseHtml(inner),
+    text: `Hi ${name},\n\nWe are writing to inform you that your account on GROWE has been removed by an administrator.\n\nIf you believe this was done in error or if you have any questions, please reply to this email or contact our support team.\n\nGROWE Administration`,
+  };
+}
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)

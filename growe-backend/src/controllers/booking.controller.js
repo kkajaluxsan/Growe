@@ -40,6 +40,13 @@ export const list = async (req, res, next) => {
       });
     }
 
+    // Attach session_ended flag for confirmed bookings where end_time has passed
+    const now = new Date().toISOString();
+    bookings = bookings.map((b) => ({
+      ...b,
+      session_ended: b.status === 'confirmed' && b.end_time && b.end_time < now,
+    }));
+
     // Attach rating status for completed bookings (student side)
     if (req.user.roleName !== 'tutor') {
       const completedIds = bookings.filter((b) => b.status === 'completed').map((b) => b.id);
@@ -67,7 +74,15 @@ export const getById = async (req, res, next) => {
     if (!isStudent && !isTutor && req.user.roleName !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
-    res.json(booking);
+
+    // Attach is_rated
+    let is_rated = false;
+    if (booking.status === 'completed') {
+      const ratedSet = await ratingModel.findRatedBookingIds([booking.id]);
+      is_rated = ratedSet.has(booking.id);
+    }
+
+    res.json({ ...booking, is_rated });
   } catch (err) {
     next(err);
   }

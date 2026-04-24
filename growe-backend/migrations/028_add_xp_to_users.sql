@@ -1,0 +1,2 @@
+-- Up
+ALTER TABLE users ADD COLUMN xp INT DEFAULT 0;

@@ -11,6 +11,7 @@ import SlotGrid from '../../components/bookings/SlotGrid';
 import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
 import BookingRejectedModal from '../../components/bookings/BookingRejectedModal';
 import RatingModal from '../../components/bookings/RatingModal';
+import TutorCard from '../../components/bookings/TutorCard';
 
 function getTodayPlus(days = 1) {
   const d = new Date();
@@ -35,9 +36,22 @@ export default function TutorList() {
   const { toast } = useToast();
   const { socket } = useSocket();
 
-  const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const saved = sessionStorage.getItem('growe_selected_date_v2');
+    return saved || getTodayPlus(0);
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('growe_selected_date_v2', selectedDate);
+  }, [selectedDate]);
+
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
+
+  // Expose state setter for E2E testing
+  if (import.meta.env.VITE_TEST_MODE === 'true' || import.meta.env.DEV) {
+    window._setSelectedDate = setSelectedDate;
+  }
 
   const [selectedKey, setSelectedKey] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -46,14 +60,20 @@ export default function TutorList() {
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [rejectedModal, setRejectedModal] = useState({ open: false, booking: null });
   const [ratingModal, setRatingModal] = useState({ open: false, booking: null });
+  const [allTutors, setAllTutors] = useState([]);
+  const [tutorsLoading, setTutorsLoading] = useState(true);
   const bookingStatusRef = useRef(new Map());
   const bookingsBootstrappedRef = useRef(false);
 
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
     setSlots([]);
-    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate } })
-      .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
+    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate, duration: 60 } })
+      .then(({ data }) => {
+        const raw = Array.isArray(data) ? data : [];
+        const now = Date.now() - 15 * 60 * 1000; // 15 min leeway
+        setSlots(raw.filter(s => new Date(s.start).getTime() >= now));
+      })
       .catch(() => {
         setSlots([]);
         toast.error('Failed to load available slots');
@@ -71,6 +91,16 @@ export default function TutorList() {
       });
   }, []);
 
+  const fetchTutors = useCallback((isSilent = false) => {
+    if (!isSilent) setTutorsLoading(true);
+    api.get('/tutors/list', { params: { limit: 100 } })
+      .then(({ data }) => setAllTutors(Array.isArray(data) ? data : []))
+      .catch(() => setAllTutors([]))
+      .finally(() => {
+        if (!isSilent) setTutorsLoading(false);
+      });
+  }, []);
+
   useEffect(() => {
     fetchSlots();
   }, [fetchSlots]);
@@ -78,6 +108,10 @@ export default function TutorList() {
   useEffect(() => {
     fetchBookings();
   }, [fetchBookings]);
+
+  useEffect(() => {
+    fetchTutors();
+  }, [fetchTutors]);
 
   useEffect(() => {
     const promptRatingBookingId = location.state?.promptRatingBookingId;
@@ -216,26 +250,10 @@ export default function TutorList() {
   };
 
   const openSessionChat = async (booking) => {
-    const otherUserId = booking?.tutor_user_id;
-    if (!otherUserId) {
-      toast.error('Tutor info missing for this booking.');
-      return;
-    }
-    try {
-      const { data } = await api.post(`/conversations/direct/${otherUserId}`);
-      navigate('/messages', {
-        state: {
-          conversation: data,
-          callSession: {
-            conversationId: data.id,
-            bookingId: booking.id,
-            callerRole: 'student',
-          },
-        },
-      });
-      toast.success('Session chat opened. Use voice/video buttons to join the session.');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not open session chat');
+    if (booking.meeting_id) {
+      navigate(`/meetings/${booking.meeting_id}`);
+    } else {
+      toast.error('Meeting room is not available for this session yet.');
     }
   };
 
@@ -335,16 +353,21 @@ export default function TutorList() {
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    Tutor: {b.tutor_email || '—'}
+                    Tutor: {b.tutor_display_name || '—'}
                   </div>
                   <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                     {new Date(b.start_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold capitalize text-slate-700 dark:text-slate-200">
-                    {b.status === 'waiting_tutor_confirmation' ? 'waiting_tutor_confirmation' : b.status}
+                    {b.status === 'waiting_tutor_confirmation' ? 'Awaiting Tutor' : b.status.replace(/_/g, ' ')}
                   </span>
+                  {b.session_ended && b.status === 'confirmed' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                      Session ended — awaiting tutor completion
+                    </span>
+                  )}
                   {b.status === 'confirmed' && isSessionLive(b) && (
                     <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>
                       Join Session
@@ -365,6 +388,37 @@ export default function TutorList() {
                   )}
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6">
+        <CardHeader
+          title="Meet Our Tutors"
+          subtitle="Browse all tutors registered on the platform. Select a time slot above to book a session with them."
+          action={
+            <Button size="sm" variant="secondary" onClick={() => fetchTutors()} disabled={tutorsLoading}>
+              {tutorsLoading ? 'Loading...' : 'Refresh'}
+            </Button>
+          }
+        />
+        {tutorsLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+          </div>
+        ) : allTutors.length === 0 ? (
+          <div className="text-sm text-slate-600 dark:text-slate-400 mt-4">No tutors found on the platform.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+            {allTutors.map((tutor) => (
+              <TutorCard
+                key={tutor.id}
+                tutor={tutor}
+                hideSelectButton
+              />
             ))}
           </div>
         )}

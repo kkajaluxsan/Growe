@@ -24,6 +24,7 @@ export default function GroupDetail() {
     d.setDate(d.getDate() + 1);
     return localDateInputMin(d);
   });
+  const [scheduleDuration, setScheduleDuration] = useState(''); // '' means default
   const [availableTutors, setAvailableTutors] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -113,14 +114,14 @@ export default function GroupDetail() {
   const loadSlotsForDate = useCallback(() => {
     setSlotsLoading(true);
     setAvailableTutors([]);
-    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id }, skipGlobalErrorToast: true })
+    api.get('/tutors/available', { params: { date: scheduleDate, groupId: id, duration: scheduleDuration || undefined }, skipGlobalErrorToast: true })
       .then(({ data }) => setAvailableTutors(Array.isArray(data) ? data : []))
       .catch(() => {
         setAvailableTutors([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [scheduleDate, toast, id]);
+  }, [scheduleDate, toast, id, scheduleDuration]);
 
   const isCreator = !!group && !!user && group.creator_id === user.id;
 
@@ -266,7 +267,7 @@ export default function GroupDetail() {
     setCreating(true);
     api.post('/meetings', {
       groupId: id,
-      title: `Group Meeting with ${tutor.email}`,
+      title: `Group Meeting with ${tutor.display_name || tutor.displayName || 'Tutor'}`,
       scheduledAt: slot.startTime,
       tutorId: tutor.tutorId,
       slot: {
@@ -309,7 +310,7 @@ export default function GroupDetail() {
           <p className="font-semibold">Pending tutor approval</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-200/95">
             We sent a request to{' '}
-            <span className="font-medium">{tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'the tutor'}</span>
+            <span className="font-medium">{tutorInvite.tutor_display_name || 'the tutor'}</span>
             {tutorInvite.slot_start
               ? ` for ${new Date(tutorInvite.slot_start).toLocaleString(undefined, {
                   dateStyle: 'medium',
@@ -324,7 +325,7 @@ export default function GroupDetail() {
         <div className="mb-4 rounded-xl border border-red-200/90 bg-red-50 dark:bg-red-950/35 dark:border-red-800 px-4 py-3 text-sm text-red-900 dark:text-red-100">
           <p className="font-semibold">Tutor declined your request</p>
           <p className="mt-1 text-red-800/95 dark:text-red-200/95">
-            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Selected tutor'} declined to tutor this group.
+            {tutorInvite.tutor_display_name || 'Selected tutor'} declined to tutor this group.
             Choose another tutor for the same date or pick a different slot.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -337,7 +338,7 @@ export default function GroupDetail() {
         <div className="mb-4 rounded-xl border border-emerald-200/90 bg-emerald-50 dark:bg-emerald-950/35 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
           <p className="font-semibold">Tutor session confirmed</p>
           <p className="mt-1 text-emerald-800/95 dark:text-emerald-200/95">
-            {tutorInvite.tutor_display_name || tutorInvite.tutor_email || 'Your tutor'} accepted this group session.
+            {tutorInvite.tutor_display_name || 'Your tutor'} accepted this group session.
             Open the tutor session chat when it is time to start or join.
           </p>
           <div className="mt-3">
@@ -366,6 +367,9 @@ export default function GroupDetail() {
         )}
         <Button variant="secondary" onClick={handleOpenGroupChat} disabled={openingGroupChat}>
           {openingGroupChat ? 'Opening…' : 'Group chat'}
+        </Button>
+        <Button variant="secondary" onClick={() => navigate(`/groups/${id}/focus`)}>
+          Enter Focus Room 🎯
         </Button>
         <Button variant="secondary" onClick={handleCreateMeeting}>Start Meeting Now</Button>
         <Button variant="secondary" onClick={() => { setScheduleModalOpen(true); setAvailableTutors([]); }}>
@@ -396,8 +400,7 @@ export default function GroupDetail() {
               {memberResults.map((u) => (
                 <div key={u.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                   <div className="text-sm">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">{u.email}</div>
-                    {u.display_name && <div className="text-slate-500 dark:text-slate-400">{u.display_name}</div>}
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{u.display_name || 'User'}</div>
                   </div>
                   <Button size="sm" onClick={() => handleAddMember(u.id)} disabled={addingMemberId === u.id}>
                     {addingMemberId === u.id ? 'Adding…' : 'Add'}
@@ -414,7 +417,7 @@ export default function GroupDetail() {
         {members.map((m) => (
           <li key={m.id} className="flex justify-between text-slate-700 dark:text-slate-300">
             <span className="flex items-center gap-2">
-              <span>{m.email}</span>
+              <span>{m.display_name || 'Member'}</span>
               <span className="text-xs text-slate-500 dark:text-slate-400">({m.status})</span>
             </span>
             {isCreator && m.status === 'pending' ? (
@@ -444,6 +447,20 @@ export default function GroupDetail() {
               className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Duration</label>
+            <select
+              value={scheduleDuration}
+              onChange={(e) => setScheduleDuration(e.target.value)}
+              className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
+            >
+              <option value="">Default</option>
+              <option value="30">30 Minutes</option>
+              <option value="45">45 Minutes</option>
+              <option value="60">60 Minutes</option>
+              <option value="90">90 Minutes</option>
+            </select>
+          </div>
           <Button variant="secondary" onClick={loadSlotsForDate} disabled={slotsLoading}>
             {slotsLoading ? 'Loading...' : 'Show available tutors'}
           </Button>
@@ -458,7 +475,7 @@ export default function GroupDetail() {
             {availableTutors.map((t) => (
               <div key={t.tutorId} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col gap-1 mb-2">
-                  <div className="font-medium text-slate-900 dark:text-slate-100">{t.email}</div>
+                  <div className="font-medium text-slate-900 dark:text-slate-100">{t.display_name || t.displayName || 'Tutor'}</div>
                   <div className="text-sm text-slate-600 dark:text-slate-400">{t.bio || 'No bio'}</div>
                 </div>
                 {Array.isArray(t.slots) && t.slots.length > 0 ? (

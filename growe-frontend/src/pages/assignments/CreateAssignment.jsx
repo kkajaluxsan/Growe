@@ -25,6 +25,13 @@ export default function CreateAssignment() {
   const [touched, setTouched] = useState({});
   const [loading, setLoading] = useState(false);
   const [visibleToAll, setVisibleToAll] = useState(false);
+
+  // Expose state setters for E2E testing
+  if (import.meta.env.VITE_TEST_MODE === 'true' || import.meta.env.DEV) {
+    window._setAssignmentTitle = setTitle;
+    window._setAssignmentDesc = setDescription;
+    window._setAssignmentDeadline = setDeadline;
+  }
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.roleName === 'admin';

@@ -8,6 +8,7 @@ import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import ShareButton from '../../components/ui/ShareButton';
 import ChatWindow from '../messaging/ChatWindow';
+import Whiteboard from './Whiteboard';
 import { LocalVideoTile, RemoteVideoTile } from './meeting/VideoTile';
 import MeetingControlBar from './meeting/MeetingControlBar';
 import { useToast } from '../../context/ToastContext';
@@ -34,7 +35,7 @@ function videoGridClass(participantCount) {
   return 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-w-[1920px] mx-auto w-full';
 }
 
-const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MEETING_OPEN_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export default function MeetingRoom() {
   const { id } = useParams();
@@ -54,6 +55,7 @@ export default function MeetingRoom() {
   const [meetingValidated, setMeetingValidated] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('Meeting');
+  const [meetingData, setMeetingData] = useState(null);
   const [meetingConversation, setMeetingConversation] = useState(null);
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
@@ -61,6 +63,7 @@ export default function MeetingRoom() {
   const [handRaised, setHandRaised] = useState(false);
   const [handsRaised, setHandsRaised] = useState({});
   const [speakingUser, setSpeakingUser] = useState(null);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const screenStreamRef = useRef(null);
   const originalVideoTrackRef = useRef(null);
   const meetingContainerRef = useRef(null);
@@ -99,6 +102,7 @@ export default function MeetingRoom() {
       .then(({ data }) => {
         if (!active) return;
         setMeetingTitle(data?.title || 'Meeting');
+        setMeetingData(data);
         if (data?.ended_at) {
           setError('This meeting has already ended.');
         } else {
@@ -272,6 +276,16 @@ export default function MeetingRoom() {
     navigate('/meetings');
   };
 
+  const handleEndMeeting = async () => {
+    if (!confirm('Are you sure you want to end this session for everyone?')) return;
+    try {
+      await api.post(`/meetings/${id}/end`);
+      // The socket event 'meeting-terminated' will be broadcasted, disconnecting everyone.
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to end meeting');
+    }
+  };
+
   const toggleMute = () => {
     const nextMuted = !muted;
     localStreamRef.current?.getAudioTracks().forEach((t) => {
@@ -376,6 +390,15 @@ export default function MeetingRoom() {
           </button>
           <button
             type="button"
+            onClick={() => setWhiteboardOpen((o) => !o)}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+              whiteboardOpen ? 'bg-growe/20 text-growe' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            Whiteboard
+          </button>
+          <button
+            type="button"
             onClick={toggleFullScreen}
             className="rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
             title={isFullScreen ? 'Exit full screen' : 'Full screen'}
@@ -430,33 +453,42 @@ export default function MeetingRoom() {
           </aside>
         )}
 
-        <div className="relative min-h-0 flex-1 overflow-y-auto pb-36 pt-4">
-          {!connected && joined && (
-            <div className="mx-auto mb-3 max-w-3xl rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
-              Trying to reconnect… Your call may be affected.
+        <div className={`relative min-h-0 flex-1 flex flex-col xl:flex-row ${whiteboardOpen ? 'overflow-hidden' : 'overflow-y-auto pb-36 pt-4'}`}>
+          {whiteboardOpen && (
+            <div className="flex-1 bg-gray-900 relative min-h-[50vh] xl:min-h-0 border-b xl:border-b-0 xl:border-r border-white/10 z-10">
+              <Whiteboard socket={socket} meetingId={id} onClose={() => setWhiteboardOpen(false)} />
             </div>
           )}
-          <div className={`${gridClass} gap-3 px-4 md:gap-4 lg:px-6`}>
-            <LocalVideoTile
-              videoRef={localVideoRef}
-              name="You"
-              isSpeaking={speakingUser != null && user?.id != null && String(speakingUser) === String(user.id)}
-              muted={muted}
-              cameraOff={videoOff}
-              handRaised={handRaised}
-              screenSharing={screenSharing}
-              displayName={user?.displayName}
-              email={user?.email}
-            />
-            {Object.entries(remoteStreams).map(([uid, stream]) => (
-              <RemoteVideoTile
-                key={uid}
-                userId={uid}
-                stream={stream}
-                handRaised={handsRaised[uid]}
-                isSpeaking={speakingUser != null && String(speakingUser) === String(uid)}
-                displayName={participantMeta[uid]?.email}
+
+          <div className={`${whiteboardOpen ? 'w-full xl:w-[320px] 2xl:w-[360px] shrink-0 bg-gray-950/50 p-4 flex flex-row xl:flex-col gap-4 overflow-auto pb-36 snap-x' : `w-full ${gridClass} gap-3 px-4 md:gap-4 lg:px-6`}`}>
+            {!connected && joined && (
+              <div className="col-span-full mx-auto mb-3 max-w-3xl rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
+                Trying to reconnect… Your call may be affected.
+              </div>
+            )}
+            <div className={whiteboardOpen ? 'w-[240px] xl:w-full shrink-0 snap-start' : ''}>
+              <LocalVideoTile
+                videoRef={localVideoRef}
+                name="You"
+                isSpeaking={speakingUser != null && user?.id != null && String(speakingUser) === String(user.id)}
+                muted={muted}
+                cameraOff={videoOff}
+                handRaised={handRaised}
+                screenSharing={screenSharing}
+                displayName={user?.displayName}
+                email={user?.email}
               />
+            </div>
+            {Object.entries(remoteStreams).map(([uid, stream]) => (
+              <div key={uid} className={whiteboardOpen ? 'w-[240px] xl:w-full shrink-0 snap-start' : ''}>
+                <RemoteVideoTile
+                  userId={uid}
+                  stream={stream}
+                  handRaised={handsRaised[uid]}
+                  isSpeaking={speakingUser != null && String(speakingUser) === String(uid)}
+                  displayName={participantMeta[uid]?.email}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -472,6 +504,7 @@ export default function MeetingRoom() {
         onShare={toggleScreenShare}
         onHand={toggleHandRaise}
         onLeave={() => handleLeave(false)}
+        onEndMeeting={meetingData?.tutor_email === user?.email ? handleEndMeeting : undefined}
       />
 
       {chatPanelOpen && meetingConversation && (
@@ -497,6 +530,8 @@ export default function MeetingRoom() {
           </div>
         </div>
       )}
+
+
 
       {showLeaveConfirm && (
         <div

@@ -41,3 +41,5 @@ export function getAiProviderOrder() {
   }
   return ['gemini', 'groq', 'xai', 'openai'].filter((name) => p[name]);
 }
+// Trigger restart for Groq env
+

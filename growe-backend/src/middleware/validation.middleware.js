@@ -7,8 +7,10 @@ import {
 import { isAllowedSpecialization } from '../constants/specializations.js';
 import {
   isValidIndexNumber,
+  isValidNIC,
   isValidPhone,
   normalizeIndexNumber,
+  normalizeNIC,
 } from '../utils/academicIdentity.js';
 
 export const validateRegister = (req, res, next) => {
@@ -21,6 +23,7 @@ export const validateRegister = (req, res, next) => {
     semester,
     specialization,
     indexNumber,
+    nicNumber,
     phoneNumber,
   } = req.body;
   const errors = [];
@@ -52,27 +55,40 @@ export const validateRegister = (req, res, next) => {
     errors.push('Name too long');
   }
 
-  const ay = parseInt(academicYear, 10);
-  if (academicYear === undefined || academicYear === null || academicYear === '') {
-    errors.push('Academic year is required');
-  } else if (Number.isNaN(ay) || ay < 1 || ay > 4) {
-    errors.push('Academic year must be between 1 and 4');
+  // Academic fields only required for students
+  if (roleName === 'student') {
+    const ay = parseInt(academicYear, 10);
+    if (academicYear === undefined || academicYear === null || academicYear === '') {
+      errors.push('Academic year is required');
+    } else if (Number.isNaN(ay) || ay < 1 || ay > 4) {
+      errors.push('Academic year must be between 1 and 4');
+    }
+
+    const sem = parseInt(semester, 10);
+    if (semester === undefined || semester === null || semester === '') {
+      errors.push('Semester is required');
+    } else if (Number.isNaN(sem) || (sem !== 1 && sem !== 2)) {
+      errors.push('Semester must be 1 or 2');
+    }
+
+    if (!specialization || typeof specialization !== 'string' || !isAllowedSpecialization(specialization)) {
+      errors.push('Valid specialization is required');
+    }
   }
 
-  const sem = parseInt(semester, 10);
-  if (semester === undefined || semester === null || semester === '') {
-    errors.push('Semester is required');
-  } else if (Number.isNaN(sem) || (sem !== 1 && sem !== 2)) {
-    errors.push('Semester must be 1 or 2');
-  }
-
-  if (!specialization || typeof specialization !== 'string' || !isAllowedSpecialization(specialization)) {
-    errors.push('Valid specialization is required');
-  }
-
-  const idx = normalizeIndexNumber(indexNumber);
-  if (!idx || !isValidIndexNumber(idx)) {
-    errors.push('Index number must start with IT and contain only numbers after');
+  // Role-specific identity validation
+  if (roleName === 'student') {
+    // Students require index number
+    const idx = normalizeIndexNumber(indexNumber);
+    if (!idx || !isValidIndexNumber(idx)) {
+      errors.push('Index number must start with IT and contain only numbers after');
+    }
+  } else if (roleName === 'tutor') {
+    // Tutors require NIC number
+    const nic = normalizeNIC(nicNumber);
+    if (!nic || !isValidNIC(nic)) {
+      errors.push('NIC must be 9 digits + V (old) or 12 digits (new)');
+    }
   }
 
   if (!phoneNumber || typeof phoneNumber !== 'string' || !isValidPhone(phoneNumber)) {
@@ -272,6 +288,22 @@ export const validateAvailabilityCreate = (req, res, next) => {
     const sd = parseInt(sessionDuration, 10);
     if (isNaN(sd) || sd < 15 || sd > 480) {
       errors.push('Session duration must be between 15 and 480 minutes');
+    } else if (
+      dateTrimmed &&
+      startTime && typeof startTime === 'string' &&
+      endTime && typeof endTime === 'string' &&
+      parseYYYYMMDDLocal(dateTrimmed)
+    ) {
+      const wStart = combineDateAndTimeLocal(dateTrimmed, startTime);
+      const wEnd = combineDateAndTimeLocal(dateTrimmed, endTime);
+      if (wStart && wEnd && !Number.isNaN(wStart.getTime()) && !Number.isNaN(wEnd.getTime())) {
+        const windowMinutes = (wEnd.getTime() - wStart.getTime()) / 60000;
+        if (windowMinutes < 15) {
+          errors.push('Availability window must be at least 15 minutes');
+        } else if (sd > windowMinutes) {
+          errors.push(`Session duration (${sd} min) cannot exceed the availability window (${Math.round(windowMinutes)} min)`);
+        }
+      }
     }
   }
 

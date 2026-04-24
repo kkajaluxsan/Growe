@@ -18,5 +18,6 @@ router.use(requireVerified);
 router.use(requireProfileComplete);
 
 router.get('/search', searchLimiter, userController.search);
+router.get('/leaderboard', userController.getLeaderboard);
 
 export default router;

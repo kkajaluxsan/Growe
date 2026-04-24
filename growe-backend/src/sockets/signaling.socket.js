@@ -36,12 +36,30 @@ export const initSignaling = (httpServer) => {
 
   // Track meeting participants for targeted signaling
   const meetingUserSocket = new Map(); // meetingId -> Map(userId -> { socketId, email })
+  const calledMeetingIds = new Set(); // track meetings that have already broadcasted calls
 
   io.on('connection', (socket) => {
     socket.join(`user-${socket.userId}`);
     if (socket.userRole === 'admin') {
       socket.join('admin-dashboard');
     }
+
+    socket.on('join-focus-room', (data) => {
+      if (data?.groupId) socket.join(`focus-group-${data.groupId}`);
+    });
+    socket.on('leave-focus-room', (data) => {
+      if (data?.groupId) socket.leave(`focus-group-${data.groupId}`);
+    });
+    socket.on('start-focus-timer', (data) => {
+      if (data?.groupId && data?.endTime) {
+        io.to(`focus-group-${data.groupId}`).emit('focus-timer-started', { endTime: data.endTime });
+      }
+    });
+    socket.on('stop-focus-timer', (data) => {
+      if (data?.groupId) {
+        io.to(`focus-group-${data.groupId}`).emit('focus-timer-stopped');
+      }
+    });
 
     socket.on('join-room', async (data, callback) => {
       try {
@@ -64,9 +82,23 @@ export const initSignaling = (httpServer) => {
           return;
         }
 
-        const member = await groupModel.getMember(meeting.group_id, socket.userId);
-        if (!member || member.status !== 'approved') {
-          callback?.({ error: 'You must be a group member to join this meeting' });
+        let isAuthorized = false;
+        if (meeting.group_id) {
+          const member = await groupModel.getMember(meeting.group_id, socket.userId);
+          const isGroupTutor = meeting.tutor_user_id === socket.userId;
+          if ((member && member.status === 'approved') || isGroupTutor) {
+            isAuthorized = true;
+          }
+        } else if (meeting.booking_id) {
+          const isTutor = meeting.tutor_user_id === socket.userId;
+          const isStudent = meeting.booking_student_id === socket.userId;
+          if (isTutor || isStudent) {
+            isAuthorized = true;
+          }
+        }
+
+        if (!isAuthorized) {
+          callback?.({ error: 'You are not authorized to join this meeting' });
           return;
         }
 
@@ -86,6 +118,35 @@ export const initSignaling = (httpServer) => {
           userId: socket.userId,
           userEmail: socket.userEmail,
         });
+
+        const isTutor = meeting.tutor_user_id === socket.userId;
+        if (isTutor && !calledMeetingIds.has(meetingId)) {
+          calledMeetingIds.add(meetingId);
+          let participantIds = [];
+          if (meeting.group_id) {
+            const members = await groupModel.listMembers(meeting.group_id);
+            participantIds = members
+              .filter(m => m.status === 'approved' && m.user_id !== socket.userId)
+              .map(m => m.user_id);
+          } else if (meeting.booking_id && meeting.booking_student_id) {
+            participantIds = [meeting.booking_student_id];
+          }
+
+          const callerUser = await userModel.findById(socket.userId);
+          const callerName = callerUser?.display_name || callerUser?.email || 'Tutor';
+          
+          participantIds.forEach(targetId => {
+            if (targetId && targetId !== socket.userId) {
+              io.to(`user-${targetId}`).emit('incoming-meeting-call', {
+                meetingId: meeting.id,
+                groupId: meeting.group_id,
+                bookingId: meeting.booking_id,
+                callerName,
+                meetingTitle: meeting.title || 'Study Group Meeting'
+              });
+            }
+          });
+        }
 
         callback?.({ success: true, existingParticipants });
       } catch (err) {
@@ -161,6 +222,20 @@ export const initSignaling = (httpServer) => {
       const { meetingId, active } = data || {};
       if (meetingId) {
         socket.to(`meeting-${meetingId}`).emit('speaking', { userId: socket.userId, active: !!active });
+      }
+    });
+
+    socket.on('whiteboard-draw', (data) => {
+      const { meetingId, stroke } = data || {};
+      if (meetingId && stroke) {
+        socket.to(`meeting-${meetingId}`).emit('whiteboard-draw', { userId: socket.userId, stroke });
+      }
+    });
+
+    socket.on('whiteboard-clear', (data) => {
+      const { meetingId } = data || {};
+      if (meetingId) {
+        socket.to(`meeting-${meetingId}`).emit('whiteboard-clear', { userId: socket.userId });
       }
     });
 

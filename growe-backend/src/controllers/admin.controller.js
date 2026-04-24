@@ -147,6 +147,10 @@ export const removeUser = async (req, res, next) => {
       return res.status(500).json({ error: 'Failed to remove user' });
     }
 
+    // Send email to the removed user (fire and forget)
+    notificationService.notifyAccountRemovedEmail({ email: user.email, name: user.display_name })
+      .catch(e => console.error('Error sending removal email:', e));
+
     await auditLogModel.create({
       actorId: req.user.id,
       action: 'user_removed',

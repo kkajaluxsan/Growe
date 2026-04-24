@@ -22,8 +22,8 @@ export const findById = async (id) => {
 };
 
 export const listByStudent = async (studentId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
-  let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-                   ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email
+  let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at, b.meeting_id,
+                   ta.tutor_id, ta.available_date, ta.session_duration, tp.user_id as tutor_user_id, u.email as tutor_email, u.display_name as tutor_display_name
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
             WHERE b.student_id = $1`;
   const params = [studentId];
@@ -37,8 +37,8 @@ export const listByStudent = async (studentId, { status, limit = 50, offset = 0,
 };
 
 export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0, filterPast = true } = {}) => {
-  let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-                   ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email
+  let sql = `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at, b.meeting_id,
+                   ta.tutor_id, ta.available_date, ta.session_duration, u.email as student_email, u.display_name as student_display_name
             FROM bookings b JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON b.student_id = u.id
             WHERE tp.user_id = $1`;
   const params = [tutorUserId];
@@ -54,7 +54,8 @@ export const listByTutor = async (tutorUserId, { status, limit = 50, offset = 0,
 export const listAllForAdmin = async ({ limit = 100, offset = 0 } = {}) => {
   const { rows } = await query(
     `SELECT b.id, b.availability_id, b.student_id, b.start_time, b.end_time, b.status, b.reliability_score, b.created_at,
-            su.email as student_email, tu.email as tutor_email
+            su.email as student_email, tu.email as tutor_email,
+            su.display_name as student_display_name, tu.display_name as tutor_display_name
      FROM bookings b JOIN users su ON b.student_id = su.id
      JOIN tutor_availability ta ON b.availability_id = ta.id JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users tu ON tp.user_id = tu.id
      ORDER BY b.created_at DESC LIMIT $1 OFFSET $2`,
@@ -64,18 +65,17 @@ export const listAllForAdmin = async ({ limit = 100, offset = 0 } = {}) => {
 };
 
 export const updateStatus = async (id, status, reliabilityScore = null) => {
-  if (reliabilityScore !== null) {
-    const { rows } = await query(
-      `UPDATE bookings SET status = $1, reliability_score = $2, updated_at = NOW() WHERE id = $3
-       RETURNING id, availability_id, student_id, start_time, end_time, status, reliability_score, created_at, updated_at`,
-      [status, reliabilityScore, id]
-    );
-    return rows[0] || null;
-  }
   const { rows } = await query(
-    `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2
-     RETURNING id, availability_id, student_id, start_time, end_time, status, reliability_score, created_at, updated_at`,
-    [status, id]
+    `UPDATE bookings SET status = $2, reliability_score = COALESCE($3, reliability_score), updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+    [id, status, reliabilityScore]
+  );
+  return rows[0] || null;
+};
+
+export const setMeetingId = async (id, meetingId) => {
+  const { rows } = await query(
+    `UPDATE bookings SET meeting_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+    [id, meetingId]
   );
   return rows[0] || null;
 };
@@ -172,13 +172,14 @@ export const countBookingsForSlot = async (availabilityId, startTime, endTime) =
   return rows[0].count;
 };
 
-export const hasStudentOverlapForSlot = async (studentId, startTime, endTime) => {
+export const getStudentOverlapStatusForSlot = async (studentId, startTime, endTime) => {
   const { rows } = await query(
-    `SELECT COUNT(*)::int as count FROM bookings
-     WHERE student_id = $1 AND status NOT IN ('cancelled') AND start_time < $3 AND end_time > $2`,
+    `SELECT status FROM bookings
+     WHERE student_id = $1 AND status NOT IN ('cancelled', 'rejected') AND start_time < $3 AND end_time > $2
+     ORDER BY created_at DESC LIMIT 1`,
     [studentId, startTime, endTime]
   );
-  return rows[0].count > 0;
+  return rows[0]?.status || null;
 };
 
 /**
@@ -198,7 +199,6 @@ export const countTutorOverlapsForSlot = async ({ tutorId, startTime, endTime, e
     [tutorId, startTime, endTime, excludeAvailabilityId]
   );
   return rows[0].count;
->>>>>>> a03196e0cfa4176d962c3660f8fbe56e87112d7b
 };
 
 /** Completed sessions per tutor profile (for tutor selection UX). */
