@@ -35,7 +35,7 @@ function videoGridClass(participantCount) {
   return 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-w-[1920px] mx-auto w-full';
 }
 
-const MEETING_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MEETING_OPEN_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export default function MeetingRoom() {
   const { id } = useParams();

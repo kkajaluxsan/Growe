@@ -18,7 +18,13 @@ export default function TutorDashboard() {
   const [availability, setAvailability] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    return sessionStorage.getItem('growe_tutor_dashboard_tab') || 'profile';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('growe_tutor_dashboard_tab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -843,11 +849,10 @@ function MiniCalendarWidget({ bookings = [], availability = [] }) {
         
         <div className="mt-8 p-4 rounded-2xl bg-emerald-50/50 dark:bg-slate-800/50 border border-emerald-100/50 dark:border-slate-700">
           <p className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            <span className="relative flex text-xl animate-bounce">
+              😊
             </span>
-            <span>Dashboard is perfectly synced.</span>
+            <span>Have a nice day!</span>
           </p>
         </div>
       </div>
