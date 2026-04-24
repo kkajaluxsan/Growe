@@ -19,7 +19,7 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (isPreview = false) => {
     if (!title.trim()) {
       return toast.error('Please enter a quiz title');
     }
@@ -34,11 +34,11 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
     formData.append('count', count);
 
     try {
-      await api.post(`/groups/${groupId}/quizzes/generate`, formData, {
+      const { data } = await api.post(`/groups/${groupId}/quizzes/generate`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Quiz generated successfully!');
-      onSuccess();
+      onSuccess(isPreview ? data.quiz.id : null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to generate quiz');
     } finally {
@@ -112,11 +112,18 @@ export default function QuizGeneratorModal({ groupId, onClose, onSuccess }) {
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleGenerate} disabled={loading}>
+          <Button 
+            className="bg-amber-500 hover:bg-amber-600 text-white border-0" 
+            onClick={() => handleGenerate(true)} 
+            disabled={loading}
+          >
+            {loading ? '...' : 'Preview Quiz'}
+          </Button>
+          <Button variant="primary" onClick={() => handleGenerate(false)} disabled={loading}>
             {loading ? (
               <span className="flex items-center gap-2">
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                Generating... (This may take a minute)
+                Generating...
               </span>
             ) : (
               'Start Quiz'
