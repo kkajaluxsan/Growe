@@ -526,7 +526,7 @@ export default function Register() {
                   Old: 9 digits + V (e.g., 123456789V) | New: 12 digits (e.g., 123456789012)
                 </p>
               </div>
-            )}}
+            )}
             <div>
               <label htmlFor="register-phone" className={authLabel}>
                 Mobile number (Sri Lanka)
