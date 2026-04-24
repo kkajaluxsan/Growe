@@ -89,6 +89,14 @@ export const addParticipant = async (meetingId, userId) => {
   return rows[0];
 };
 
+export const hasUserParticipated = async (meetingId, userId) => {
+  const { rows } = await query(
+    `SELECT 1 FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]
+  );
+  return rows.length > 0;
+};
+
 export const markStartedIfNeeded = async (meetingId) => {
   const { rowCount } = await query(
     `UPDATE meetings
