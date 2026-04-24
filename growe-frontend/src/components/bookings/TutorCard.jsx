@@ -60,8 +60,16 @@ export default function TutorCard({ tutor, onSelect, selecting, hideSelectButton
         <div className="min-w-0 flex-1">
           <StarRow value={rating} count={ratingCount} />
           <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100 truncate">{name}</div>
-          <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            <div>Subject: {subjects}</div>
+          <div className="mt-1 text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <div><span className="font-medium text-slate-700 dark:text-slate-300">Subject:</span> {subjects}</div>
+            {(tutor?.years_experience > 0 || tutor?.experience_details) && (
+              <div>
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  Experience{tutor?.years_experience > 0 ? ` (${tutor.years_experience} years)` : ''}:
+                </span>{' '}
+                {tutor?.experience_details || 'Experienced Tutor'}
+              </div>
+            )}
           </div>
         </div>
         {!hideSelectButton && (

@@ -176,12 +176,16 @@ export default function TutorDashboard() {
 function TutorProfileSection({ profile, onSaved }) {
   const [bio, setBio] = useState(profile?.bio || '');
   const [subjects, setSubjects] = useState(profile?.subjects?.join(', ') || '');
+  const [yearsExperience, setYearsExperience] = useState(profile?.years_experience || 0);
+  const [experienceDetails, setExperienceDetails] = useState(profile?.experience_details || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setBio(profile?.bio || '');
     setSubjects(profile?.subjects?.join(', ') || '');
+    setYearsExperience(profile?.years_experience || 0);
+    setExperienceDetails(profile?.experience_details || '');
   }, [profile]);
 
   const handleSubmit = async (e) => {
@@ -189,12 +193,19 @@ function TutorProfileSection({ profile, onSaved }) {
     setError('');
     setSaving(true);
     const subjectsArray = subjects.split(',').map((s) => s.trim()).filter(Boolean);
+    const payload = {
+      bio,
+      subjects: subjectsArray,
+      yearsExperience: Number(yearsExperience),
+      experienceDetails
+    };
+
     try {
       if (profile) {
-        await api.patch('/tutors/profile', { bio, subjects: subjectsArray });
+        await api.patch('/tutors/profile', payload);
         alert('Profile updated');
       } else {
-        await api.post('/tutors/profile', { bio, subjects: subjectsArray });
+        await api.post('/tutors/profile', payload);
         alert('Profile created');
       }
       onSaved();
@@ -216,8 +227,8 @@ function TutorProfileSection({ profile, onSaved }) {
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             className="w-full border rounded py-2 px-3"
-            rows={4}
-            placeholder="Tell students about your teaching experience..."
+            rows={3}
+            placeholder="Tell students about yourself..."
           />
         </div>
         <div className="mb-4">
@@ -229,6 +240,29 @@ function TutorProfileSection({ profile, onSaved }) {
             className="w-full border rounded py-2 px-3"
             placeholder="e.g. Math, Physics, Chemistry"
           />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div className="md:col-span-1">
+            <label className="block text-sm font-medium mb-1">Years of Experience</label>
+            <input
+              type="number"
+              min="0"
+              value={yearsExperience}
+              onChange={(e) => setYearsExperience(e.target.value)}
+              className="w-full border rounded py-2 px-3"
+              placeholder="e.g. 5"
+            />
+          </div>
+          <div className="md:col-span-3">
+            <label className="block text-sm font-medium mb-1">Experience Details (Where you worked)</label>
+            <textarea
+              value={experienceDetails}
+              onChange={(e) => setExperienceDetails(e.target.value)}
+              className="w-full border rounded py-2 px-3"
+              rows={2}
+              placeholder="e.g. Former Math Teacher at Example High School, 3 years online tutoring..."
+            />
+          </div>
         </div>
         <Button type="submit" disabled={saving} loading={saving}>
           {saving ? 'Saving...' : profile ? 'Update Profile' : 'Create Profile'}

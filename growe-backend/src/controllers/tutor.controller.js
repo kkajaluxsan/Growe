@@ -10,11 +10,13 @@ export const createProfile = async (req, res, next) => {
     if (existing) {
       return res.status(409).json({ error: 'Tutor profile already exists' });
     }
-    const { bio, subjects = [] } = req.body;
+    const { bio, subjects = [], yearsExperience, experienceDetails } = req.body;
     const profile = await tutorModel.createProfile({
       userId: req.user.id,
       bio: bio?.trim() || null,
       subjects: Array.isArray(subjects) ? subjects : [],
+      yearsExperience: typeof yearsExperience === 'number' ? Math.max(0, parseInt(yearsExperience)) : 0,
+      experienceDetails: experienceDetails?.trim() || null,
     });
     res.status(201).json(profile);
   } catch (err) {
@@ -36,10 +38,12 @@ export const getProfile = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { bio, subjects } = req.body;
+    const { bio, subjects, yearsExperience, experienceDetails } = req.body;
     const profile = await tutorModel.updateProfile(req.user.id, {
       bio: bio !== undefined ? bio?.trim() : undefined,
       subjects: subjects !== undefined ? (Array.isArray(subjects) ? subjects : []) : undefined,
+      yearsExperience: yearsExperience !== undefined ? Math.max(0, parseInt(yearsExperience)) : undefined,
+      experienceDetails: experienceDetails !== undefined ? experienceDetails?.trim() : undefined,
     });
     if (!profile) {
       return res.status(404).json({ error: 'Tutor profile not found' });

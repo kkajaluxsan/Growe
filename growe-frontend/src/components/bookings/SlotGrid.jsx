@@ -27,7 +27,10 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
     const blocksArr = Array.from(availByKey.keys())
       .map((k) => {
         const [start, end] = k.split('__');
-        return { key: k, start, end, tutorCount: keyToTutors.get(k)?.size || 0 };
+        const slotsForBlock = availByKey.get(k) || [];
+        const availableSlots = slotsForBlock.filter(s => !s.isBooked);
+        const uniqueTutors = new Set(availableSlots.map(s => s.tutorId || s.tutorEmail || 'tutor')).size;
+        return { key: k, start, end, tutorCount: uniqueTutors };
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
@@ -37,15 +40,15 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {blocks.map((b) => {
-        const available = (availabilityByBlock.get(b.key) || []).length > 0;
+        const available = b.tutorCount > 0;
         const state = b.key === selectedKey ? 'selected' : available ? 'available' : 'booked';
         return (
           <SlotCard
             key={b.key}
             state={state}
             label={formatTimeRange(b.start, b.end)}
-            sublabel={available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'No tutors available'}
-            onClick={() => onSelectKey?.(b.key)}
+            sublabel={available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'Booked'}
+            onClick={() => available && onSelectKey?.(b.key)}
           />
         );
       })}

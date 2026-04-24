@@ -1,17 +1,17 @@
 import { query } from '../config/db.js';
 
-export const createProfile = async ({ userId, bio, subjects = [] }) => {
+export const createProfile = async ({ userId, bio, subjects = [], yearsExperience = 0, experienceDetails = null }) => {
   const { rows } = await query(
-    `INSERT INTO tutor_profiles (user_id, bio, subjects) VALUES ($1, $2, $3)
-     RETURNING id, user_id, bio, subjects, is_suspended, created_at, updated_at`,
-    [userId, bio || null, subjects]
+    `INSERT INTO tutor_profiles (user_id, bio, subjects, years_experience, experience_details) VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, user_id, bio, subjects, years_experience, experience_details, is_suspended, created_at, updated_at`,
+    [userId, bio || null, subjects, yearsExperience, experienceDetails]
   );
   return rows[0];
 };
 
 export const findProfileByUserId = async (userId) => {
   const { rows } = await query(
-    'SELECT id, user_id, bio, subjects, is_suspended, created_at, updated_at FROM tutor_profiles WHERE user_id = $1',
+    'SELECT id, user_id, bio, subjects, years_experience, experience_details, is_suspended, created_at, updated_at FROM tutor_profiles WHERE user_id = $1',
     [userId]
   );
   return rows[0] || null;
@@ -19,25 +19,27 @@ export const findProfileByUserId = async (userId) => {
 
 export const findProfileById = async (id) => {
   const { rows } = await query(
-    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.is_suspended, tp.created_at, tp.updated_at, u.email
+    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.years_experience, tp.experience_details, tp.is_suspended, tp.created_at, tp.updated_at, u.email
      FROM tutor_profiles tp JOIN users u ON tp.user_id = u.id WHERE tp.id = $1`,
     [id]
   );
   return rows[0] || null;
 };
 
-export const updateProfile = async (userId, { bio, subjects }) => {
+export const updateProfile = async (userId, { bio, subjects, yearsExperience, experienceDetails }) => {
   const updates = [];
   const params = [];
   let i = 1;
   if (bio !== undefined) { updates.push(`bio = $${i}`); params.push(bio); i++; }
   if (subjects !== undefined) { updates.push(`subjects = $${i}`); params.push(subjects); i++; }
+  if (yearsExperience !== undefined) { updates.push(`years_experience = $${i}`); params.push(yearsExperience); i++; }
+  if (experienceDetails !== undefined) { updates.push(`experience_details = $${i}`); params.push(experienceDetails); i++; }
   if (updates.length === 0) return findProfileByUserId(userId);
   updates.push(`updated_at = NOW()`);
   params.push(userId);
   const { rows } = await query(
     `UPDATE tutor_profiles SET ${updates.join(', ')} WHERE user_id = $${i}
-     RETURNING id, user_id, bio, subjects, is_suspended, created_at, updated_at`,
+     RETURNING id, user_id, bio, subjects, years_experience, experience_details, is_suspended, created_at, updated_at`,
     params
   );
   return rows[0] || null;
@@ -46,7 +48,7 @@ export const updateProfile = async (userId, { bio, subjects }) => {
 export const setSuspended = async (userId, isSuspended) => {
   const { rows } = await query(
     `UPDATE tutor_profiles SET is_suspended = $1, updated_at = NOW() WHERE user_id = $2
-     RETURNING id, user_id, bio, subjects, is_suspended, created_at, updated_at`,
+     RETURNING id, user_id, bio, subjects, years_experience, experience_details, is_suspended, created_at, updated_at`,
     [isSuspended, userId]
   );
   return rows[0] || null;
@@ -142,7 +144,7 @@ export const updateAvailability = async (
 
 export const listTutorProfiles = async ({ limit = 50, offset = 0 } = {}) => {
   const { rows } = await query(
-    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.is_suspended, u.email, u.display_name, u.avatar_url
+    `SELECT tp.id, tp.user_id, tp.bio, tp.subjects, tp.years_experience, tp.experience_details, tp.is_suspended, u.email, u.display_name, u.avatar_url
      FROM tutor_profiles tp
      JOIN users u ON tp.user_id = u.id
      WHERE tp.is_suspended = false

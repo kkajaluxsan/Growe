@@ -107,17 +107,22 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
           excludeAvailabilityId: av.id,
         });
 
-        if (tutorOverlapCount === 0 && count < av.max_students_per_slot) {
-          const key = `${av.tutor_id}|${startIso}|${endIso}`;
-          if (!slotsMap.has(key)) {
-            slotsMap.set(key, {
-              availabilityId: av.id,
-              tutorId: av.tutor_id,
-              start: startIso,
-              end: endIso,
-              date: dateStr,
-            });
-          }
+        const isFullyBooked = tutorOverlapCount > 0 || count >= av.max_students_per_slot;
+
+        const key = `${av.tutor_id}|${startIso}|${endIso}`;
+        if (!slotsMap.has(key)) {
+          slotsMap.set(key, {
+            availabilityId: av.id,
+            tutorId: av.tutor_id,
+            start: startIso,
+            end: endIso,
+            date: dateStr,
+            isBooked: isFullyBooked,
+          });
+        } else if (isFullyBooked) {
+          // If the slot is already in the map (e.g. from a recurring availability) but we just found it's booked, update it
+          const existing = slotsMap.get(key);
+          existing.isBooked = true;
         }
       }
     }
