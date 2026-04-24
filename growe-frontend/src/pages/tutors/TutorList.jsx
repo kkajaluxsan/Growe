@@ -36,7 +36,15 @@ export default function TutorList() {
   const { toast } = useToast();
   const { socket } = useSocket();
 
-  const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const saved = sessionStorage.getItem('growe_selected_date');
+    return saved || getTodayPlus(0);
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('growe_selected_date', selectedDate);
+  }, [selectedDate]);
+
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
 
