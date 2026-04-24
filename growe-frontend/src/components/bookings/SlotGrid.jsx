@@ -30,7 +30,8 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
         const slotsForBlock = availByKey.get(k) || [];
         const availableSlots = slotsForBlock.filter(s => !s.isBooked);
         const uniqueTutors = new Set(availableSlots.map(s => s.tutorId || s.tutorEmail || 'tutor')).size;
-        return { key: k, start, end, tutorCount: uniqueTutors };
+        const isPending = slotsForBlock.some(s => s.isPending);
+        return { key: k, start, end, tutorCount: uniqueTutors, isPending };
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
@@ -41,13 +42,18 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {blocks.map((b) => {
         const available = b.tutorCount > 0;
-        const state = b.key === selectedKey ? 'selected' : available ? 'available' : 'booked';
+        const isActuallySelected = b.key === selectedKey;
+        const state = isActuallySelected || b.isPending ? 'selected' : available ? 'available' : 'booked';
+        
+        let sublabel = available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'Booked';
+        if (b.isPending) sublabel = 'Requested';
+
         return (
           <SlotCard
             key={b.key}
             state={state}
             label={formatTimeRange(b.start, b.end)}
-            sublabel={available ? `${b.tutorCount} tutor${b.tutorCount === 1 ? '' : 's'} available` : 'Booked'}
+            sublabel={sublabel}
             onClick={() => available && onSelectKey?.(b.key)}
           />
         );

@@ -92,11 +92,12 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
       const endIso = slotEnd.toISOString();
 
       // Check for student overlap
-      let studentFree = true;
+      let studentOverlapStatus = null;
       if (studentId) {
-        const hasOverlap = await bookingModel.hasStudentOverlapForSlot(studentId, startIso, endIso);
-        if (hasOverlap) studentFree = false;
+        studentOverlapStatus = await bookingModel.getStudentOverlapStatusForSlot(studentId, startIso, endIso);
       }
+      const studentFree = !studentOverlapStatus;
+      const isPending = ['pending', 'waiting_tutor_confirmation'].includes(studentOverlapStatus);
 
       const count = await bookingModel.countBookingsForSlot(av.id, startIso, endIso);
       const tutorOverlapCount = await bookingModel.countTutorOverlapsForSlot({
@@ -106,7 +107,7 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
         excludeAvailabilityId: av.id,
       });
 
-      const isFullyBooked = !studentFree || tutorOverlapCount > 0 || count >= av.max_students_per_slot;
+      const isFullyBooked = (!studentFree && !isPending) || tutorOverlapCount > 0 || count >= av.max_students_per_slot;
 
       const key = `${av.tutor_id}|${startIso}|${endIso}`;
       if (!slotsMap.has(key)) {
@@ -117,11 +118,12 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
           end: endIso,
           date: dateStr,
           isBooked: isFullyBooked,
+          isPending: isPending,
         });
-      } else if (isFullyBooked) {
-        // If the slot is already in the map (e.g. from a recurring availability) but we just found it's booked, update it
+      } else {
         const existing = slotsMap.get(key);
-        existing.isBooked = true;
+        if (isFullyBooked) existing.isBooked = true;
+        if (isPending) existing.isPending = true;
       }
     }
   }
