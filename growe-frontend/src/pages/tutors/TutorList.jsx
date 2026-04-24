@@ -11,6 +11,7 @@ import SlotGrid from '../../components/bookings/SlotGrid';
 import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
 import BookingRejectedModal from '../../components/bookings/BookingRejectedModal';
 import RatingModal from '../../components/bookings/RatingModal';
+import TutorCard from '../../components/bookings/TutorCard';
 
 function getTodayPlus(days = 1) {
   const d = new Date();
@@ -36,7 +37,6 @@ export default function TutorList() {
   const { socket } = useSocket();
 
   const [selectedDate, setSelectedDate] = useState(() => getTodayPlus(1));
-  const [duration, setDuration] = useState(''); // '' means use tutor default
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
 
@@ -52,20 +52,26 @@ export default function TutorList() {
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [rejectedModal, setRejectedModal] = useState({ open: false, booking: null });
   const [ratingModal, setRatingModal] = useState({ open: false, booking: null });
+  const [allTutors, setAllTutors] = useState([]);
+  const [tutorsLoading, setTutorsLoading] = useState(true);
   const bookingStatusRef = useRef(new Map());
   const bookingsBootstrappedRef = useRef(false);
 
   const fetchSlots = useCallback(() => {
     setSlotsLoading(true);
     setSlots([]);
-    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate, duration: duration || undefined } })
-      .then(({ data }) => setSlots(Array.isArray(data) ? data : []))
+    api.get('/tutors/slots', { params: { fromDate: selectedDate, toDate: selectedDate, duration: 60 } })
+      .then(({ data }) => {
+        const raw = Array.isArray(data) ? data : [];
+        const now = Date.now() - 15 * 60 * 1000; // 15 min leeway
+        setSlots(raw.filter(s => new Date(s.start).getTime() >= now));
+      })
       .catch(() => {
         setSlots([]);
         toast.error('Failed to load available slots');
       })
       .finally(() => setSlotsLoading(false));
-  }, [selectedDate, duration, toast]);
+  }, [selectedDate, toast]);
 
   const fetchBookings = useCallback((isSilent = false) => {
     if (!isSilent) setBookingsLoading(true);
@@ -77,13 +83,27 @@ export default function TutorList() {
       });
   }, []);
 
+  const fetchTutors = useCallback((isSilent = false) => {
+    if (!isSilent) setTutorsLoading(true);
+    api.get('/tutors/list', { params: { limit: 100 } })
+      .then(({ data }) => setAllTutors(Array.isArray(data) ? data : []))
+      .catch(() => setAllTutors([]))
+      .finally(() => {
+        if (!isSilent) setTutorsLoading(false);
+      });
+  }, []);
+
   useEffect(() => {
     fetchSlots();
-  }, [fetchSlots, duration]);
+  }, [fetchSlots]);
 
   useEffect(() => {
     fetchBookings();
   }, [fetchBookings]);
+
+  useEffect(() => {
+    fetchTutors();
+  }, [fetchTutors]);
 
   useEffect(() => {
     const promptRatingBookingId = location.state?.promptRatingBookingId;
@@ -269,17 +289,6 @@ export default function TutorList() {
                 min={localDateInputMin()}
                 className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
               />
-              <select
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                className="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
-              >
-                <option value="">Default Duration</option>
-                <option value="30">30 Minutes</option>
-                <option value="45">45 Minutes</option>
-                <option value="60">60 Minutes</option>
-                <option value="90">90 Minutes</option>
-              </select>
               <Button size="sm" variant="secondary" onClick={fetchSlots} disabled={slotsLoading}>
                 {slotsLoading ? 'Loading...' : 'Refresh'}
               </Button>
@@ -371,6 +380,37 @@ export default function TutorList() {
                   )}
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6">
+        <CardHeader
+          title="Meet Our Tutors"
+          subtitle="Browse all tutors registered on the platform. Select a time slot above to book a session with them."
+          action={
+            <Button size="sm" variant="secondary" onClick={() => fetchTutors()} disabled={tutorsLoading}>
+              {tutorsLoading ? 'Loading...' : 'Refresh'}
+            </Button>
+          }
+        />
+        {tutorsLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+          </div>
+        ) : allTutors.length === 0 ? (
+          <div className="text-sm text-slate-600 dark:text-slate-400 mt-4">No tutors found on the platform.</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+            {allTutors.map((tutor) => (
+              <TutorCard
+                key={tutor.id}
+                tutor={tutor}
+                hideSelectButton
+              />
             ))}
           </div>
         )}

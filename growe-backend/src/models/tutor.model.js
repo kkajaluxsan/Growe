@@ -56,7 +56,7 @@ export const createAvailability = async ({ tutorId, availableDate, startTime, en
   const { rows } = await query(
     `INSERT INTO tutor_availability (tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot)
      VALUES ($1, $2::date, $3, $4, $5, $6, $7)
-     RETURNING id, tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at`,
+     RETURNING id, tutor_id, TO_CHAR(available_date, 'YYYY-MM-DD') as available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at`,
     [tutorId, availableDate, startTime, endTime, sessionDuration, isRecurring, maxStudentsPerSlot]
   );
   return rows[0];
@@ -64,7 +64,7 @@ export const createAvailability = async ({ tutorId, availableDate, startTime, en
 
 export const findAvailabilityById = async (id) => {
   const { rows } = await query(
-    `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.is_recurring, ta.max_students_per_slot,
+    `SELECT ta.id, ta.tutor_id, TO_CHAR(ta.available_date, 'YYYY-MM-DD') as available_date, ta.start_time, ta.end_time, ta.session_duration, ta.is_recurring, ta.max_students_per_slot,
             tp.user_id as tutor_user_id, tp.is_suspended
      FROM tutor_availability ta JOIN tutor_profiles tp ON ta.tutor_id = tp.id WHERE ta.id = $1`,
     [id]
@@ -73,7 +73,7 @@ export const findAvailabilityById = async (id) => {
 };
 
 export const listAvailabilityByTutor = async (tutorId, { fromDate, toDate } = {}) => {
-  let sql = `SELECT id, tutor_id, available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at
+  let sql = `SELECT id, tutor_id, TO_CHAR(available_date, 'YYYY-MM-DD') as available_date, start_time, end_time, session_duration, is_recurring, max_students_per_slot, created_at
              FROM tutor_availability WHERE tutor_id = $1 AND available_date::date >= CURRENT_DATE`;
   const params = [tutorId];
   let i = 2;
@@ -85,7 +85,7 @@ export const listAvailabilityByTutor = async (tutorId, { fromDate, toDate } = {}
 };
 
 export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } = {}) => {
-  let sql = `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
+  let sql = `SELECT ta.id, ta.tutor_id, TO_CHAR(ta.available_date, 'YYYY-MM-DD') as available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
                     tp.user_id as tutor_user_id, u.email as tutor_email
              FROM tutor_availability ta JOIN tutor_profiles tp ON ta.tutor_id = tp.id JOIN users u ON tp.user_id = u.id
              WHERE tp.is_suspended = false AND ta.available_date::date >= CURRENT_DATE`;
@@ -101,7 +101,7 @@ export const listAvailabilityForBooking = async ({ tutorId, fromDate, toDate } =
 
 export const listAvailabilityForTutorsOnDate = async (dateStr) => {
   const { rows } = await query(
-    `SELECT ta.id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
+    `SELECT ta.id, ta.tutor_id, TO_CHAR(ta.available_date, 'YYYY-MM-DD') as available_date, ta.start_time, ta.end_time, ta.session_duration, ta.max_students_per_slot,
             tp.user_id as tutor_user_id, tp.bio as tutor_bio, tp.subjects as tutor_subjects,
             u.email as tutor_email, u.display_name as tutor_display_name, u.avatar_url as tutor_avatar_url
      FROM tutor_availability ta

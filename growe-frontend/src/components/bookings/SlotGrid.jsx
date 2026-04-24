@@ -31,26 +31,6 @@ export default function SlotGrid({ slots, selectedKey, onSelectKey }) {
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-    // Make it feel like a theatre grid: include missing time blocks based on observed interval
-    if (blocksArr.length >= 2) {
-      const starts = blocksArr.map((b) => new Date(b.start).getTime()).sort((a, b) => a - b);
-      const deltas = [];
-      for (let i = 1; i < starts.length; i += 1) deltas.push(starts[i] - starts[i - 1]);
-      const step = deltas.sort((a, b) => a - b)[0] || 60 * 60 * 1000;
-      const min = starts[0];
-      const max = starts[starts.length - 1];
-      for (let t = min; t <= max; t += step) {
-        const start = new Date(t).toISOString();
-        const end = new Date(t + step).toISOString();
-        const k = getKey(start, end);
-        if (!availByKey.has(k)) {
-          availByKey.set(k, []);
-          blocksArr.push({ key: k, start, end, tutorCount: 0, synthetic: true });
-        }
-      }
-      blocksArr.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-    }
-
     return { blocks: blocksArr, availabilityByBlock: availByKey };
   }, [slots]);
 

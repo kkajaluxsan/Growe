@@ -3,7 +3,6 @@ import { generateReply } from '../services/ai.service.js';
 import * as userModel from '../models/user.model.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { PDFParse } = require('pdf-parse');
 
 /** Whether the server has any AI provider key (no secrets returned). */
 export const status = (req, res) => {
@@ -65,9 +64,17 @@ export const generateFlashcards = async (req, res, next) => {
     let documentContext = '';
     if (file) {
       if (file.mimetype === 'application/pdf') {
-        const parser = new PDFParse({ data: file.buffer });
-        const pdfData = { text: await parser.getText() };
-        documentContext = pdfData.text.slice(0, 15000); // chunk it to keep token count reasonable
+        try {
+          const { PDFParse } = require('pdf-parse');
+          const parser = new PDFParse({ data: file.buffer });
+          await parser.load();
+          const result = await parser.getText();
+          const rawText = result && result.text ? result.text : '';
+          documentContext = rawText.slice(0, 15000);
+        } catch (pdfErr) {
+          console.error('PDF parse error:', pdfErr.message);
+          return res.status(400).json({ error: 'Could not read the PDF. Please try a different file.' });
+        }
       } else {
         documentContext = file.buffer.toString('utf8').slice(0, 15000);
       }

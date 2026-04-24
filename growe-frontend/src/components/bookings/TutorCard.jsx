@@ -22,7 +22,7 @@ function StarRow({ value, count }) {
   );
 }
 
-export default function TutorCard({ tutor, onSelect, selecting }) {
+export default function TutorCard({ tutor, onSelect, selecting, hideSelectButton }) {
   const rating = tutor?.avg_rating || tutor?.avgRating || 0;
   const ratingCount = tutor?.rating_count || tutor?.ratingCount || 0;
   const subjects = tutor?.subjects?.length ? tutor.subjects.join(', ') : '—';
@@ -64,11 +64,13 @@ export default function TutorCard({ tutor, onSelect, selecting }) {
             <div>Subject: {subjects}</div>
           </div>
         </div>
-        <div className="shrink-0">
-          <Button onClick={onSelect} disabled={selecting} loading={selecting}>
-            Select Tutor
-          </Button>
-        </div>
+        {!hideSelectButton && (
+          <div className="shrink-0">
+            <Button onClick={onSelect} disabled={selecting} loading={selecting}>
+              Select Tutor
+            </Button>
+          </div>
+        )}
       </div>
     </Card>
   );

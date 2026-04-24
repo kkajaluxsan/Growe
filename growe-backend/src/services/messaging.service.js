@@ -82,9 +82,23 @@ export const getOrCreateMeetingConversation = async (userId, meetingId) => {
     err.statusCode = 404;
     throw err;
   }
-  const member = await groupModel.getMember(meeting.group_id, userId);
-  if (!member || member.status !== 'approved') {
-    const err = new Error('You must be a group member to access this meeting chat');
+  let isAuthorized = false;
+  if (meeting.group_id) {
+    const member = await groupModel.getMember(meeting.group_id, userId);
+    const isGroupTutor = meeting.tutor_user_id === userId;
+    if ((member && member.status === 'approved') || isGroupTutor) {
+      isAuthorized = true;
+    }
+  } else if (meeting.booking_id) {
+    const isTutor = meeting.tutor_user_id === userId;
+    const isStudent = meeting.booking_student_id === userId;
+    if (isTutor || isStudent) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
+    const err = new Error('You are not authorized to access this meeting chat');
     err.statusCode = 403;
     throw err;
   }

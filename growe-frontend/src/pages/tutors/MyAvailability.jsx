@@ -50,7 +50,7 @@ export default function MyAvailability() {
   const isToday = availableDate === todayStr;
 
   // Compute window duration in minutes for validation
-  const effectiveDuration = durationMode === 'custom' ? sessionDuration : presetDuration;
+  const effectiveDuration = 60;
   const windowMinutes = (() => {
     if (!startTime || !endTime) return 0;
     const [sH, sM] = startTime.split(':').map(Number);
@@ -61,7 +61,7 @@ export default function MyAvailability() {
 
   // Estimate how many bookable slots this creates (30-min grid)
   const estimatedSlots = (() => {
-    if (!startTime || !endTime || windowMinutes <= 0 || effectiveDuration <= 0 || effectiveDuration > windowMinutes) return 0;
+    if (!startTime || !endTime || windowMinutes <= 0 || effectiveDuration > windowMinutes) return 0;
     const GRID = 30;
     const [sH, sM] = startTime.split(':').map(Number);
     const startMin = sH * 60 + sM;
@@ -137,7 +137,7 @@ export default function MyAvailability() {
         availableDate,
         startTime: startTime + ':00',
         endTime: endTime + ':00',
-        sessionDuration: durationMode === 'custom' ? sessionDuration : presetDuration,
+        sessionDuration: 60,
         maxStudentsPerSlot,
       });
       setAvailableDate('');
@@ -309,43 +309,7 @@ export default function MyAvailability() {
               className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Duration (min)</label>
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {[30, 45, 60, 90].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      setDurationMode('preset');
-                      setPresetDuration(d);
-                    }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'preset' && presetDuration === d ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                  >
-                    {d === 60 ? '1 hour' : `${d} min`}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setDurationMode('custom')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'custom' ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                >
-                  Custom
-                </button>
-              </div>
-              {durationMode === 'custom' && (
-                <input
-                  type="number"
-                  min={15}
-                  max={480}
-                  value={sessionDuration}
-                  onChange={(e) => setSessionDuration(parseInt(e.target.value, 10) || 15)}
-                  className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 w-28"
-                />
-              )}
-            </div>
-          </div>
+
           <div>
             <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">Max per slot</label>
             <input
@@ -393,14 +357,10 @@ export default function MyAvailability() {
               >
                 {editingId === String(a.id) ? (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <input type="date" value={editForm.availableDate} min={localDateInputMin()} onChange={(e) => setEditForm((p) => ({ ...p, availableDate: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                       <input type="time" value={editForm.startTime} min={editForm.availableDate === todayStr ? currentTimeStr : undefined} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                       <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
-                      <input type="number" min={15} max={480} value={editForm.durationMode === 'custom' ? editForm.sessionDuration : editForm.presetDuration} onChange={(e) => {
-                        const n = parseInt(e.target.value, 10) || 15;
-                        setEditForm((p) => p.durationMode === 'custom' ? { ...p, sessionDuration: n } : { ...p, presetDuration: n });
-                      }} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                       <input type="number" min={1} max={20} value={editForm.maxStudentsPerSlot} onChange={(e) => setEditForm((p) => ({ ...p, maxStudentsPerSlot: parseInt(e.target.value, 10) || 1 }))} className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2" />
                     </div>
                     <div className="flex flex-wrap gap-2">

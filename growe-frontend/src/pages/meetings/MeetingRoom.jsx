@@ -55,6 +55,7 @@ export default function MeetingRoom() {
   const [meetingValidated, setMeetingValidated] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('Meeting');
+  const [meetingData, setMeetingData] = useState(null);
   const [meetingConversation, setMeetingConversation] = useState(null);
   const [chatPanelOpen, setChatPanelOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
@@ -101,6 +102,7 @@ export default function MeetingRoom() {
       .then(({ data }) => {
         if (!active) return;
         setMeetingTitle(data?.title || 'Meeting');
+        setMeetingData(data);
         if (data?.ended_at) {
           setError('This meeting has already ended.');
         } else {
@@ -272,6 +274,16 @@ export default function MeetingRoom() {
     peersRef.current = {};
     setRemoteStreams({});
     navigate('/meetings');
+  };
+
+  const handleEndMeeting = async () => {
+    if (!confirm('Are you sure you want to end this session for everyone?')) return;
+    try {
+      await api.post(`/meetings/${id}/end`);
+      // The socket event 'meeting-terminated' will be broadcasted, disconnecting everyone.
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to end meeting');
+    }
   };
 
   const toggleMute = () => {
@@ -492,6 +504,7 @@ export default function MeetingRoom() {
         onShare={toggleScreenShare}
         onHand={toggleHandRaise}
         onLeave={() => handleLeave(false)}
+        onEndMeeting={meetingData?.tutor_email === user?.email ? handleEndMeeting : undefined}
       />
 
       {chatPanelOpen && meetingConversation && (

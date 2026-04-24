@@ -86,8 +86,7 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
       const slotEnd = combineDateAndTimeLocal(dateStr, formatSec(s + durationSec));
       if (!slotStart || !slotEnd) continue;
 
-      const NOW_LENIENT = Date.now() - 15 * 60 * 1000;
-      if (slotStart.getTime() < NOW_LENIENT) continue;
+      if (slotStart.getTime() <= Date.now()) continue;
 
       const startIso = slotStart.toISOString();
       const endIso = slotEnd.toISOString();
@@ -109,7 +108,7 @@ export const getAvailableSlots = async ({ tutorId, fromDate, toDate, studentId, 
         });
 
         if (tutorOverlapCount === 0 && count < av.max_students_per_slot) {
-          const key = `${startIso}|${endIso}`;
+          const key = `${av.tutor_id}|${startIso}|${endIso}`;
           if (!slotsMap.has(key)) {
             slotsMap.set(key, {
               availabilityId: av.id,

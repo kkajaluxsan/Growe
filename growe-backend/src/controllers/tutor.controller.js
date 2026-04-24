@@ -71,7 +71,7 @@ export const addAvailability = async (req, res, next) => {
     );
     if (overlap) {
       return res.status(409).json({
-        error: `This window overlaps with existing availability (${overlap.start_time?.slice(0, 5)}–${overlap.end_time?.slice(0, 5)}). Delete or edit the existing slot first.`,
+        error: `already booked select another slot`,
       });
     }
 
@@ -143,7 +143,7 @@ export const updateAvailability = async (req, res, next) => {
     );
     if (overlap) {
       return res.status(409).json({
-        error: `This window overlaps with existing availability (${overlap.start_time?.slice(0, 5)}–${overlap.end_time?.slice(0, 5)}). Delete or edit the existing slot first.`,
+        error: `already booked select another slot`,
       });
     }
 

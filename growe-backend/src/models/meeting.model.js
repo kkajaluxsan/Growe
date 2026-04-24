@@ -15,6 +15,7 @@ export const findById = async (id) => {
     `SELECT m.id, m.group_id, m.title, m.started_at, m.ended_at, m.created_by,
             m.created_at, m.updated_at, m.scheduled_at, m.tutor_id, m.booking_id,
             sg.name as group_name,
+            u.id as tutor_user_id,
             u.email as tutor_email,
             b.student_id as booking_student_id
      FROM meetings m

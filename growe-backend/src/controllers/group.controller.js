@@ -11,6 +11,7 @@ import * as notificationService from '../services/notification.service.js';
 import { logger } from '../utils/logger.js';
 import { generateVerificationToken } from '../utils/generateToken.js';
 import { isPast } from '../utils/timeUtils.js';
+import { emitMeetingTerminated } from '../sockets/signaling.socket.js';
 
 async function assertTutorInviteIsValid({ creatorId, tutorInvite }) {
   const {
@@ -434,11 +435,12 @@ export const getMeetingById = async (req, res, next) => {
     // Authorization: Must be group member or booking participant
     if (meeting.group_id) {
       const member = await groupModel.getMember(meeting.group_id, req.user.id);
-      if (!member || member.status !== 'approved') {
+      const isGroupTutor = meeting.tutor_user_id === req.user.id;
+      if ((!member || member.status !== 'approved') && !isGroupTutor) {
         return res.status(403).json({ error: 'You must be a group member to view this meeting' });
       }
     } else if (meeting.booking_id) {
-      const isTutor = req.user.roleName === 'tutor' && meeting.tutor_email === req.user.email;
+      const isTutor = meeting.tutor_user_id === req.user.id;
       const isStudent = meeting.booking_student_id === req.user.id;
       if (!isTutor && !isStudent) {
         return res.status(403).json({ error: 'You are not a participant in this meeting' });
@@ -482,6 +484,10 @@ export const endMeeting = async (req, res, next) => {
     }
 
     const terminated = await meetingService.endMeeting(id);
+    const io = req.app.get('io');
+    if (io) {
+      emitMeetingTerminated(io, id);
+    }
     res.json(terminated);
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });

@@ -411,4 +411,16 @@ export async function notifyNewTutorRating({ tutorUserId, studentEmail, rating }
   });
 }
 
+export async function notifyAccountRemovedEmail({ email, name }) {
+  if (!email || !isSmtpConfigured()) return;
+  const { subject, html, text } = templates.accountRemovedTemplate({ userName: name });
+  
+  try {
+    const { ok } = await sendMailWithRetry({ to: email, subject, html, text });
+    if (!ok) logger.warn('account_removed_email_failed', { email });
+  } catch (err) {
+    logger.warn('account_removed_email_error', { err: err.message, email });
+  }
+}
+
 export { TYPES };

@@ -244,18 +244,12 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   const [availableDate, setAvailableDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [sessionDuration, setSessionDuration] = useState(60);
-  const [durationMode, setDurationMode] = useState('preset');
-  const [presetDuration, setPresetDuration] = useState(60);
   const [maxStudentsPerSlot, setMaxStudentsPerSlot] = useState(1);
   const [editingId, setEditingId] = useState('');
   const [editForm, setEditForm] = useState({
     availableDate: '',
     startTime: '09:00',
     endTime: '17:00',
-    durationMode: 'preset',
-    presetDuration: 60,
-    sessionDuration: 60,
     maxStudentsPerSlot: 1,
   });
 
@@ -279,7 +273,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
         availableDate,
         startTime: startTime + ':00',
         endTime: endTime + ':00',
-        sessionDuration: durationMode === 'custom' ? sessionDuration : presetDuration,
+        sessionDuration: 60,
         maxStudentsPerSlot,
       });
       setAvailableDate('');
@@ -292,17 +286,11 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
   };
 
   const beginEdit = (slot) => {
-    const currentDuration = Number(slot.session_duration) || 60;
-    const preset = [30, 45, 60, 90].includes(currentDuration) ? currentDuration : 60;
-    const mode = [30, 45, 60, 90].includes(currentDuration) ? 'preset' : 'custom';
     setEditingId(String(slot.id));
     setEditForm({
       availableDate: slot.available_date,
       startTime: slot.start_time?.slice(0, 5) || '09:00',
       endTime: slot.end_time?.slice(0, 5) || '17:00',
-      durationMode: mode,
-      presetDuration: preset,
-      sessionDuration: currentDuration,
       maxStudentsPerSlot: Number(slot.max_students_per_slot) || 1,
     });
   };
@@ -324,10 +312,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
         availableDate: editForm.availableDate,
         startTime: `${editForm.startTime}:00`,
         endTime: `${editForm.endTime}:00`,
-        sessionDuration:
-          editForm.durationMode === 'custom'
-            ? Number(editForm.sessionDuration)
-            : Number(editForm.presetDuration),
+        sessionDuration: 60,
         maxStudentsPerSlot: Number(editForm.maxStudentsPerSlot) || 1,
       });
       setEditingId('');
@@ -347,7 +332,7 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
     }
   };
 
-  const effectiveDuration = durationMode === 'custom' ? sessionDuration : presetDuration;
+  const effectiveDuration = 60;
   const windowMinutes = (() => {
     if (!startTime || !endTime) return 0;
     const [sH, sM] = startTime.split(':').map(Number);
@@ -414,43 +399,6 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Duration (min)</label>
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {[30, 45, 60, 90].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      setDurationMode('preset');
-                      setPresetDuration(d);
-                    }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'preset' && presetDuration === d ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                  >
-                    {d === 60 ? '1 hour' : `${d} min`}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setDurationMode('custom')}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold border ${durationMode === 'custom' ? 'bg-growe border-growe-dark text-slate-900' : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'}`}
-                >
-                  Custom
-                </button>
-              </div>
-              {durationMode === 'custom' && (
-                <input
-                  type="number"
-                  min={15}
-                  max={480}
-                  value={sessionDuration}
-                  onChange={(e) => setSessionDuration(parseInt(e.target.value, 10) || 15)}
-                  className="border rounded py-2 px-3 w-24"
-                />
-              )}
-            </div>
-          </div>
-          <div>
             <label className="block text-sm font-medium mb-1">Max per slot</label>
             <input
               type="number"
@@ -487,14 +435,10 @@ function TutorAvailabilitySection({ availability, onUpdate }) {
               <li key={a.id} className="py-2 border-b">
                 {editingId === String(a.id) ? (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <input type="date" value={editForm.availableDate} min={localDateInputMin()} onChange={(e) => setEditForm((p) => ({ ...p, availableDate: e.target.value }))} className="border rounded py-2 px-3" />
                       <input type="time" value={editForm.startTime} min={editForm.availableDate === todayStr ? currentTimeStr : undefined} onChange={(e) => setEditForm((p) => ({ ...p, startTime: e.target.value }))} className="border rounded py-2 px-3" />
                       <input type="time" value={editForm.endTime} onChange={(e) => setEditForm((p) => ({ ...p, endTime: e.target.value }))} className="border rounded py-2 px-3" />
-                      <input type="number" min={15} max={480} value={editForm.durationMode === 'custom' ? editForm.sessionDuration : editForm.presetDuration} onChange={(e) => {
-                        const n = parseInt(e.target.value, 10) || 15;
-                        setEditForm((p) => p.durationMode === 'custom' ? { ...p, sessionDuration: n } : { ...p, presetDuration: n });
-                      }} className="border rounded py-2 px-3" />
                       <input type="number" min={1} max={20} value={editForm.maxStudentsPerSlot} onChange={(e) => setEditForm((p) => ({ ...p, maxStudentsPerSlot: parseInt(e.target.value, 10) || 1 }))} className="border rounded py-2 px-3" />
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -654,17 +598,14 @@ function TutorBookingsSection({ bookings, onUpdate, onAfterGroupInviteAccept }) 
                         📋 This session has ended. Mark it as <strong>Complete</strong> so the student can rate you.
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex items-center gap-1.5">
                       {isSessionLive(b) && (
                         <Button size="sm" variant="secondary" onClick={() => openSessionChat(b)}>Start Session</Button>
                       )}
                       {hasStarted(b) && (
-                        <>
-                          <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
-                            {b.session_ended ? '✓ Mark Complete' : 'Complete'}
-                          </Button>
-                          <Button size="sm" variant="warning" onClick={() => handleStatus(b.id, 'no_show')}>No-Show</Button>
-                        </>
+                        <Button size="sm" variant="success" onClick={() => handleStatus(b.id, 'completed')}>
+                          {b.session_ended ? '✓ Complete' : 'Complete'}
+                        </Button>
                       )}
                       <Button size="sm" variant="danger" onClick={() => handleStatus(b.id, 'cancelled')}>Cancel</Button>
                     </div>

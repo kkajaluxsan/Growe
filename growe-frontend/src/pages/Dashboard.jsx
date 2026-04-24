@@ -10,7 +10,7 @@ import { useToast } from '../context/ToastContext';
 import { useSocket } from '../context/SocketContext';
 
 const ONBOARDING_KEY = 'growe_onboarding_seen';
-const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || '').trim();
+const SUPPORT_EMAIL = (import.meta.env.VITE_SUPPORT_EMAIL || import.meta.env.VITE_ADMIN_EMAIL || 'growelearnning@gmail.com').trim();
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function Icon({ name, className = 'h-5 w-5' }) {

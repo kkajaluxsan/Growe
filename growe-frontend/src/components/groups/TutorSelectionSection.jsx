@@ -26,7 +26,6 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
     d.setDate(d.getDate() + 1);
     return localDateInputMin(d);
   });
-  const [duration, setDuration] = useState('60'); // Default to 60 minutes
   const [daySlots, setDaySlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -57,12 +56,14 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
     }
     setSlotsLoading(true);
     api
-      .get('/tutors/slots', { params: { fromDate: sessionDate, toDate: sessionDate, duration: duration || undefined }, skipGlobalErrorToast: true })
+      .get('/tutors/slots', { params: { fromDate: sessionDate, toDate: sessionDate, duration: 60 }, skipGlobalErrorToast: true })
       .then(({ data }) => {
         const raw = Array.isArray(data) ? data : [];
+        const now = Date.now() - 15 * 60 * 1000;
         const seen = new Set();
         const unique = [];
         raw.forEach((s) => {
+          if (new Date(s.start).getTime() < now) return;
           const key = `${s.start}|${s.end}`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -78,7 +79,7 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
 
   useEffect(() => {
     loadDaySlots();
-  }, [loadDaySlots, duration]);
+  }, [loadDaySlots]);
 
   useEffect(() => {
     setSelectedTutor(null);
@@ -175,7 +176,7 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
       </div>
 
       <div className="space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="session-date" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
               Session date
@@ -188,22 +189,6 @@ export default function TutorSelectionSection({ subject, onTutorChange, onSlotCh
               min={localDateInputMin()}
               className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
             />
-          </div>
-          <div>
-            <label htmlFor="slot-duration" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Duration
-            </label>
-            <select
-              id="slot-duration"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2 px-3 text-slate-900 dark:text-slate-100"
-            >
-              <option value="30">30 Minutes</option>
-              <option value="45">45 Minutes</option>
-              <option value="60">60 Minutes</option>
-              <option value="90">90 Minutes</option>
-            </select>
           </div>
           <div>
             <label htmlFor="session-slot" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">

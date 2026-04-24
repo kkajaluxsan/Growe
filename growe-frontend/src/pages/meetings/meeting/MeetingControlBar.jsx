@@ -11,6 +11,7 @@ export default function MeetingControlBar({
   onShare,
   onHand,
   onLeave,
+  onEndMeeting,
 }) {
   return (
     <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-[45] flex justify-center px-4 pb-6 pt-4">
@@ -48,7 +49,12 @@ export default function MeetingControlBar({
           <IconHand raised={handRaised} />
         </ControlButton>
         <div className="mx-1 hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
-        <ControlButton danger label="Leave meeting" onClick={onLeave}>
+        {onEndMeeting && (
+          <ControlButton danger label="End Session for All" onClick={onEndMeeting}>
+            <IconLeave />
+          </ControlButton>
+        )}
+        <ControlButton danger={!onEndMeeting} label="Leave meeting" onClick={onLeave}>
           <IconLeave />
         </ControlButton>
       </div>
