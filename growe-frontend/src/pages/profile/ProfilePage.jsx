@@ -157,225 +157,226 @@ export default function ProfilePage() {
 
  return (
   <div className="w-full max-w-5xl space-y-6">
-    <PageHeader
-      title="Profile"
-      subtitle="Manage your academic identity and account details."
-    />
+    <PageHeader title="Profile" subtitle="Manage your academic identity and account details." />
 
-      {user?.indexNumber || user?.nicNumber || user?.specialization || user?.academicYear != null ? (
-        <Card>
-          <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Academic identity</h2>
-          <dl className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
-            {user?.indexNumber && (
-              <div>
-                <dt className="text-slate-500 dark:text-slate-400">Index</dt>
-                <dd className="font-medium">{user.indexNumber}</dd>
-              </div>
-            )}
-            {user?.nicNumber && (
-              <div>
-                <dt className="text-slate-500 dark:text-slate-400">NIC</dt>
-                <dd className="font-medium">{user.nicNumber}</dd>
-              </div>
-            )}
-            {yearSemLabel() && (
-              <div>
-                <dt className="text-slate-500 dark:text-slate-400">Year &amp; semester</dt>
-                <dd className="font-medium">{yearSemLabel()}</dd>
-              </div>
-            )}
-            {user?.specialization && (
-              <div>
-                <dt className="text-slate-500 dark:text-slate-400">Specialization</dt>
-                <dd className="font-medium">{user.specialization}</dd>
-              </div>
-            )}
-            {user?.phone && (
-              <div>
-                <dt className="text-slate-500 dark:text-slate-400">Mobile</dt>
-                <dd className="font-medium">{user.phone}</dd>
-              </div>
-            )}
-          </dl>
-        </Card>
-      ) : null}
-
-      {hasReliability && (
-        <Card>
-          <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Booking reliability</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Based on {user.reliabilityTotal} completed or no-show session{user.reliabilityTotal !== 1 ? 's' : ''}.
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="w-24 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-              <div
-                className="h-full bg-slate-700 dark:bg-slate-400 rounded-full"
-                style={{ width: `${(Number(user.reliabilityScore) || 0) * 100}%` }}
-              />
-            </div>
-            <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-              {(Number(user.reliabilityScore) || 0).toFixed(2)}
-            </span>
-          </div>
-        </Card>
-      )}
-
-      <Card>
-        <div className="flex flex-col sm:flex-row gap-6">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-28 h-28 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center border-2 border-slate-300 dark:border-slate-600">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-4xl font-semibold text-slate-500 dark:text-slate-400">
-                  {(user?.displayName || user?.email || '?').charAt(0).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <label className="cursor-pointer inline-block">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                className="hidden"
-                onChange={handleAvatarChange}
-                disabled={uploading}
-              />
-              <span className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500 disabled:opacity-50">
-                {uploading ? 'Uploading...' : 'Change photo'}
-              </span>
-            </label>
-            <p className="text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, GIF or WebP. Max 2 MB.</p>
-          </div>
-
-          <form onSubmit={handleSaveProfile} className="flex-1 space-y-4">
-            <div>
-              <Input
-                type="text"
-                label="Display name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your name"
-                maxLength={255}
-              />
-            </div>
-            <div>
-              <Input
-                type="email"
-                label="Email"
-                value={user?.email || ''}
-                disabled
-              />
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Email cannot be changed.</p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              {!isTutor ? (
+    {(user?.indexNumber ||
+      user?.nicNumber ||
+      user?.specialization ||
+      user?.academicYear != null ||
+      hasReliability) && (
+      <div className="grid gap-6 lg:grid-cols-2">
+        {user?.indexNumber || user?.nicNumber || user?.specialization || user?.academicYear != null ? (
+          <Card>
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100 mb-3">Academic identity</h2>
+            <dl className="grid gap-3 sm:grid-cols-2 text-sm text-slate-700 dark:text-slate-200">
+              {user?.indexNumber && (
                 <div>
-                  <Input
-                    type="text"
-                    label="Index number"
-                    value={indexNumber}
-                    onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                    placeholder="IT2023001"
-                    inputClassName="font-mono text-sm"
-                    maxLength={14}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <Input
-                    type="text"
-                    label="NIC number"
-                    value={nicNumber}
-                    onChange={(e) => setNicNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                    placeholder="123456789V"
-                    inputClassName="font-mono text-sm"
-                    maxLength={12}
-                  />
+                  <dt className="text-slate-500 dark:text-slate-400">Index</dt>
+                  <dd className="font-medium break-words">{user.indexNumber}</dd>
                 </div>
               )}
-              <div>
-                <Input
-                  type="tel"
-                  label="Mobile"
-                  inputMode="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ''))}
-                  placeholder="+94771234567"
+              {user?.nicNumber && (
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">NIC</dt>
+                  <dd className="font-medium break-words">{user.nicNumber}</dd>
+                </div>
+              )}
+              {yearSemLabel() && (
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Year &amp; semester</dt>
+                  <dd className="font-medium break-words">{yearSemLabel()}</dd>
+                </div>
+              )}
+              {user?.specialization && (
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Specialization</dt>
+                  <dd className="font-medium break-words">{user.specialization}</dd>
+                </div>
+              )}
+              {user?.phone && (
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Mobile</dt>
+                  <dd className="font-medium break-words">{user.phone}</dd>
+                </div>
+              )}
+            </dl>
+          </Card>
+        ) : (
+          <div className="hidden lg:block" />
+        )}
+
+        {hasReliability && (
+          <Card>
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100">Booking reliability</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              Based on {user.reliabilityTotal} completed or no-show session{user.reliabilityTotal !== 1 ? 's' : ''}.
+            </p>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full bg-slate-700 dark:bg-slate-400 rounded-full"
+                  style={{ width: `${(Number(user.reliabilityScore) || 0) * 100}%` }}
                 />
               </div>
+              <span className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                {(Number(user.reliabilityScore) || 0).toFixed(2)}
+              </span>
             </div>
-            
-            {!isTutor && (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Academic year</label>
-                    <select
-                      value={academicYear}
-                      onChange={(e) => setAcademicYear(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">—</option>
-                      {ACADEMIC_YEARS.map((y) => (
-                        <option key={y.value} value={y.value}>
-                          {y.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Semester</label>
-                    <select
-                      value={semester}
-                      onChange={(e) => setSemester(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">—</option>
-                      {SEMESTERS.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+          </Card>
+        )}
+      </div>
+    )}
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specialization</label>
-                  <select
-                    value={specialization}
-                    onChange={(e) => setSpecialization(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
-                  >
-                    <option value="">—</option>
-                    {SPECIALIZATION_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
+    <Card>
+      <div className="grid gap-6 lg:grid-cols-[240px_1fr] lg:items-start">
+        <div className="flex flex-col items-center lg:items-start gap-3">
+          <div className="w-28 h-28 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center border-2 border-slate-300 dark:border-slate-600">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-4xl font-semibold text-slate-500 dark:text-slate-400">
+                {(user?.displayName || user?.email || '?').charAt(0).toUpperCase()}
+              </span>
             )}
+          </div>
+          <label className="cursor-pointer inline-block w-full">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={handleAvatarChange}
+              disabled={uploading}
+            />
+            <span className="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-100 dark:hover:bg-slate-500 disabled:opacity-50">
+              {uploading ? 'Uploading...' : 'Change photo'}
+            </span>
+          </label>
+          <p className="text-xs text-slate-500 dark:text-slate-400 text-center lg:text-left">
+            JPEG, PNG, GIF or WebP. Max 2 MB.
+          </p>
+        </div>
+
+        <form onSubmit={handleSaveProfile} className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              type="text"
+              label="Display name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              maxLength={255}
+            />
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bio</label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="A short bio about you"
-                rows={3}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100 resize-none"
-                maxLength={500}
-              />
+              <Input type="email" label="Email" value={user?.email || ''} disabled />
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Email cannot be changed.</p>
             </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {!isTutor ? (
+              <Input
+                type="text"
+                label="Index number"
+                value={indexNumber}
+                onChange={(e) => setIndexNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                placeholder="IT2023001"
+                inputClassName="font-mono text-sm"
+                maxLength={14}
+              />
+            ) : (
+              <Input
+                type="text"
+                label="NIC number"
+                value={nicNumber}
+                onChange={(e) => setNicNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                placeholder="123456789V"
+                inputClassName="font-mono text-sm"
+                maxLength={12}
+              />
+            )}
+
+            <Input
+              type="tel"
+              label="Mobile"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ''))}
+              placeholder="+94771234567"
+            />
+          </div>
+
+          {!isTutor && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Academic year</label>
+                <select
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="">—</option>
+                  {ACADEMIC_YEARS.map((y) => (
+                    <option key={y.value} value={y.value}>
+                      {y.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Semester</label>
+                <select
+                  value={semester}
+                  onChange={(e) => setSemester(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="">—</option>
+                  {SEMESTERS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Specialization</label>
+                <select
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100"
+                >
+                  <option value="">—</option>
+                  {SPECIALIZATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Bio</label>
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="A short bio about you"
+              rows={3}
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-slate-100 resize-none"
+              maxLength={500}
+            />
+          </div>
+
+          <div className="flex items-center justify-end">
             <Button type="submit" disabled={saving || !profilePatchValid} loading={saving}>
               Save profile
             </Button>
-          </form>
-        </div>
-      </Card>
+          </div>
+        </form>
+      </div>
+    </Card>
 
       {isTutor && (
         <Card>
